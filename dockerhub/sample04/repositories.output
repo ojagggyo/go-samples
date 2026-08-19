@@ -1,0 +1,39 @@
+Starting: C:\Users\ojagg\go\bin\dlv.exe dap --listen=127.0.0.1:54562 from D:\GitHub\go-samples/sample02
+DAP server listening at: 127.0.0.1:54562
+Building .
+Type 'dlv help' for list of commands.
+========================================
+ Docker Hub Repository Checker
+========================================
+
+Docker Hub authentication...
+Authentication successful.
+
+GET https://hub.docker.com/v2/namespaces/steemit/repositories?page_size=3&ordering=-last_updated
+
+========================================
+ Namespace: steemit
+========================================
+imageproxy 2016-12-29T18:27:35.381681Z
+steemnotify-datastore 2017-03-31T17:45:24.849634Z
+steemnofity-datastore 2017-03-31T17:46:09.23021Z
+GET https://hub.docker.com/v2/namespaces/moeckisteem/repositories?page_size=3&ordering=-last_updated
+
+========================================
+ Namespace: moeckisteem
+========================================
+tinman 2025-05-09T07:52:26.418884Z
+steemd-testnet 2025-05-09T08:52:40.266759Z
+steemd-db-check 2026-03-16T23:48:15.016515Z
+GET https://hub.docker.com/v2/namespaces/ojagggyo/repositories?page_size=3&ordering=-last_updated
+
+========================================
+ Namespace: ojagggyo
+========================================
+accounthistorynext 2026-05-31T01:54:28.770422Z
+postsnext 2026-06-01T14:33:33.107995Z
+steem 2026-08-10T14:50:21.771429Z
+
+========================================
+Process 3328 has exited with status 0
+Detaching

@@ -1,0 +1,53 @@
+Starting: C:\Users\ojagg\go\bin\dlv.exe dap --listen=127.0.0.1:60989 from D:\GitHub\go-samples/sample01
+DAP server listening at: 127.0.0.1:60989
+Building .
+Type 'dlv help' for list of commands.
+========================================
+ Docker Hub Tag Downloader
+========================================
+
+Docker Hub authentication...
+Authentication successful.
+
+Repository: steemit/hivemind
+Downloading tags...
+
+[1] GET https://hub.docker.com/v2/namespaces/steemit/repositories/hivemind/tags?page_size=3&ordering=last_updated
+    3 tags received
+
+========================================
+Total tags: 3
+========================================
+
+Tag          : latest-6d0f3e1-20260814031303
+Last Updated : 2026-08-14T03:15:41.361006Z
+Last Pushed  : 2026-08-14T03:15:41.361006Z
+Full Size    : 391064682 bytes
+Images:
+  OS           : linux
+  Architecture : amd64
+  Digest       : sha256:acabd57d181819bab810d62242954b9f811f128c13629509c6e4b6487d071600
+  Size         : 391064682 bytes
+----------------------------------------
+Tag          : latest-6d0f3e1
+Last Updated : 2026-08-14T02:23:18.42634Z
+Last Pushed  : 2026-08-14T02:23:18.42634Z
+Full Size    : 391064682 bytes
+Images:
+  OS           : linux
+  Architecture : amd64
+  Digest       : sha256:acabd57d181819bab810d62242954b9f811f128c13629509c6e4b6487d071600
+  Size         : 391064682 bytes
+----------------------------------------
+Tag          : latest
+Last Updated : 2026-08-14T02:23:16.905165Z
+Last Pushed  : 2026-08-14T02:23:16.905165Z
+Full Size    : 391064682 bytes
+Images:
+  OS           : linux
+  Architecture : amd64
+  Digest       : sha256:acabd57d181819bab810d62242954b9f811f128c13629509c6e4b6487d071600
+  Size         : 391064682 bytes
+----------------------------------------
+Process 1972 has exited with status 0
+Detaching

@@ -1,0 +1,111 @@
+Starting: C:\Users\ojagg\go\bin\dlv.exe dap --listen=127.0.0.1:55751 from D:\GitHub\go-samples/sample01
+DAP server listening at: 127.0.0.1:55751
+Building .
+Type 'dlv help' for list of commands.
+========================================
+ Docker Hub Repository Checker
+========================================
+
+Docker Hub authentication...
+Authentication successful.
+
+GET https://hub.docker.com/v2/namespaces/steemit/repositories/hivemind/tags?page_size=100
+GET https://hub.docker.com/v2/namespaces/steemit/repositories/hivemind/tags?page=2&page_size=100
+GET https://hub.docker.com/v2/namespaces/steemit/repositories/hivemind/tags?page=3&page_size=100
+GET https://hub.docker.com/v2/namespaces/steemit/repositories/hivemind/tags?page=4&page_size=100
+GET https://hub.docker.com/v2/namespaces/steemit/repositories/hivemind/tags?page=5&page_size=100
+GET https://hub.docker.com/v2/namespaces/steemit/repositories/hivemind/tags?page=6&page_size=100
+GET https://hub.docker.com/v2/namespaces/steemit/repositories/hivemind/tags?page=7&page_size=100
+GET https://hub.docker.com/v2/namespaces/steemit/repositories/hivemind/tags?page=8&page_size=100
+GET https://hub.docker.com/v2/namespaces/steemit/repositories/hivemind/tags?page=9&page_size=100
+GET https://hub.docker.com/v2/namespaces/steemit/repositories/hivemind/tags?page=10&page_size=100
+GET https://hub.docker.com/v2/namespaces/steemit/repositories/hivemind/tags?page=11&page_size=100
+GET https://hub.docker.com/v2/namespaces/steemit/repositories/hivemind/tags?page=12&page_size=100
+GET https://hub.docker.com/v2/namespaces/steemit/repositories/jussi/tags?page_size=100
+GET https://hub.docker.com/v2/namespaces/steemit/repositories/jussi/tags?page=2&page_size=100
+GET https://hub.docker.com/v2/namespaces/steemit/repositories/jussi/tags?page=3&page_size=100
+GET https://hub.docker.com/v2/namespaces/steemit/repositories/jussi/tags?page=4&page_size=100
+GET https://hub.docker.com/v2/namespaces/steemit/repositories/jussi/tags?page=5&page_size=100
+GET https://hub.docker.com/v2/namespaces/steemit/repositories/jussi/tags?page=6&page_size=100
+GET https://hub.docker.com/v2/namespaces/steemit/repositories/jussi/tags?page=7&page_size=100
+GET https://hub.docker.com/v2/namespaces/steemit/repositories/condenser/tags?page_size=100
+GET https://hub.docker.com/v2/namespaces/steemit/repositories/condenser/tags?page=2&page_size=100
+GET https://hub.docker.com/v2/namespaces/steemit/repositories/condenser/tags?page=3&page_size=100
+GET https://hub.docker.com/v2/namespaces/steemit/repositories/condenser/tags?page=4&page_size=100
+GET https://hub.docker.com/v2/namespaces/steemit/repositories/condenser/tags?page=5&page_size=100
+GET https://hub.docker.com/v2/namespaces/steemit/repositories/condenser/tags?page=6&page_size=100
+GET https://hub.docker.com/v2/namespaces/steemit/repositories/condenser/tags?page=7&page_size=100
+GET https://hub.docker.com/v2/namespaces/steemit/repositories/condenser/tags?page=8&page_size=100
+GET https://hub.docker.com/v2/namespaces/steemit/repositories/condenser/tags?page=9&page_size=100
+GET https://hub.docker.com/v2/namespaces/steemit/repositories/condenser/tags?page=10&page_size=100
+GET https://hub.docker.com/v2/namespaces/steemit/repositories/condenser/tags?page=11&page_size=100
+GET https://hub.docker.com/v2/namespaces/steemit/repositories/condenser/tags?page=12&page_size=100
+GET https://hub.docker.com/v2/namespaces/steemit/repositories/condenser/tags?page=13&page_size=100
+GET https://hub.docker.com/v2/namespaces/steemit/repositories/condenser/tags?page=14&page_size=100
+GET https://hub.docker.com/v2/namespaces/steemit/repositories/condenser/tags?page=15&page_size=100
+GET https://hub.docker.com/v2/namespaces/steemit/repositories/condenser/tags?page=16&page_size=100
+GET https://hub.docker.com/v2/namespaces/steemit/repositories/condenser/tags?page=17&page_size=100
+GET https://hub.docker.com/v2/namespaces/steemit/repositories/condenser/tags?page=18&page_size=100
+GET https://hub.docker.com/v2/namespaces/steemit/repositories/condenser/tags?page=19&page_size=100
+GET https://hub.docker.com/v2/namespaces/steemit/repositories/condenser/tags?page=20&page_size=100
+GET https://hub.docker.com/v2/namespaces/steemit/repositories/condenser/tags?page=21&page_size=100
+GET https://hub.docker.com/v2/namespaces/steemit/repositories/condenser/tags?page=22&page_size=100
+GET https://hub.docker.com/v2/namespaces/steemit/repositories/condenser/tags?page=23&page_size=100
+GET https://hub.docker.com/v2/namespaces/steemit/repositories/condenser/tags?page=24&page_size=100
+GET https://hub.docker.com/v2/namespaces/steemit/repositories/steem/tags?page_size=100
+GET https://hub.docker.com/v2/namespaces/steemit/repositories/steem/tags?page=2&page_size=100
+GET https://hub.docker.com/v2/namespaces/steemit/repositories/steem/tags?page=3&page_size=100
+GET https://hub.docker.com/v2/namespaces/steemit/repositories/steem/tags?page=4&page_size=100
+GET https://hub.docker.com/v2/namespaces/steemit/repositories/steem/tags?page=5&page_size=100
+GET https://hub.docker.com/v2/namespaces/steemit/repositories/steem/tags?page=6&page_size=100
+GET https://hub.docker.com/v2/namespaces/steemit/repositories/steem/tags?page=7&page_size=100
+GET https://hub.docker.com/v2/namespaces/steemit/repositories/steem/tags?page=8&page_size=100
+GET https://hub.docker.com/v2/namespaces/steemit/repositories/steem/tags?page=9&page_size=100
+GET https://hub.docker.com/v2/namespaces/steemit/repositories/steem/tags?page=10&page_size=100
+GET https://hub.docker.com/v2/namespaces/steemit/repositories/steem/tags?page=11&page_size=100
+GET https://hub.docker.com/v2/namespaces/steemit/repositories/steem/tags?page=12&page_size=100
+GET https://hub.docker.com/v2/namespaces/steemit/repositories/steem/tags?page=13&page_size=100
+GET https://hub.docker.com/v2/namespaces/steemit/repositories/steem/tags?page=14&page_size=100
+GET https://hub.docker.com/v2/namespaces/steemit/repositories/steem/tags?page=15&page_size=100
+GET https://hub.docker.com/v2/namespaces/steemit/repositories/steem/tags?page=16&page_size=100
+GET https://hub.docker.com/v2/namespaces/steemit/repositories/steem/tags?page=17&page_size=100
+GET https://hub.docker.com/v2/namespaces/steemit/repositories/steem/tags?page=18&page_size=100
+GET https://hub.docker.com/v2/namespaces/steemit/repositories/steem/tags?page=19&page_size=100
+GET https://hub.docker.com/v2/namespaces/steemit/repositories/steem/tags?page=20&page_size=100
+GET https://hub.docker.com/v2/namespaces/steemit/repositories/steem/tags?page=21&page_size=100
+GET https://hub.docker.com/v2/namespaces/steemit/repositories/steem/tags?page=22&page_size=100
+GET https://hub.docker.com/v2/namespaces/steemit/repositories/steem/tags?page=23&page_size=100
+GET https://hub.docker.com/v2/namespaces/steemit/repositories/steem/tags?page=24&page_size=100
+GET https://hub.docker.com/v2/namespaces/steemit/repositories/steem/tags?page=25&page_size=100
+GET https://hub.docker.com/v2/namespaces/steemit/repositories/steem/tags?page=26&page_size=100
+GET https://hub.docker.com/v2/namespaces/steemit/repositories/steem/tags?page=27&page_size=100
+GET https://hub.docker.com/v2/namespaces/steemit/repositories/steem/tags?page=28&page_size=100
+GET https://hub.docker.com/v2/namespaces/steemit/repositories/steem/tags?page=29&page_size=100
+GET https://hub.docker.com/v2/namespaces/steemit/repositories/steem/tags?page=30&page_size=100
+
+========================================
+ Latest 3 Tags
+========================================
+hivemind
+  1. latest-6d0f3e1-20260814031303  2026-08-14T03:15:41.361006Z
+  2. latest-6d0f3e1                 2026-08-14T02:23:18.42634Z
+  3. latest                         2026-08-14T02:23:16.905165Z
+
+jussi
+  1. next-758133f                   2026-08-12T16:26:19.234177Z
+  2. next                           2026-08-12T16:26:17.640893Z
+  3. next-7b5c43a                   2026-08-12T16:08:01.652033Z
+
+condenser
+  1. pr3990-test1-20260803020131    2026-08-03T02:01:36.493804Z
+  2. pr3990-test1-20260803015923    2026-08-03T01:59:30.447953Z
+  3. next-pr3988.1-20260729055315   2026-07-29T05:53:24.875776Z
+
+steem
+  1. 0.23.x-mira-full-20260514172606 2026-05-14T17:26:21.658467Z
+  2. 0.23.1-ah-issue3694-20260514171623 2026-05-14T17:16:38.398573Z
+  3. 0.23.x-mira-full-20260512073024 2026-05-12T07:30:29.768898Z
+
+========================================
+Process 4356 has exited with status 0
+Detaching

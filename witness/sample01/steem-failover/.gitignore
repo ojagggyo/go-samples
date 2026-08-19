@@ -1,0 +1,8 @@
+gitignore.txt
+.env
+.unuse/
+downloads/
+.lib/
+memo
+steem-failover
+steem-failover.exe
