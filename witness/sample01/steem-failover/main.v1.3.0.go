@@ -35,6 +35,7 @@ type Config struct {
 	ActivePrivateKey string
 
 	// SigningKeys is an ordered failover chain.
+	//
 	// Example:
 	//   [Primary, Backup, Failsafe]
 	//   [Primary, Failsafe]
@@ -52,6 +53,9 @@ type Witness struct {
 	SigningKey  string `json:"signing_key"`
 	TotalMissed uint64 `json:"total_missed"`
 
+	// 監視対象Witnessが最後に確認したブロック番号
+	LastConfirmedBlockNum uint32 `json:"last_confirmed_block_num"`
+
 	Props struct {
 		AccountCreationFee string `json:"account_creation_fee"`
 		MaximumBlockSize   uint32 `json:"maximum_block_size"`
@@ -59,17 +63,6 @@ type Witness struct {
 	} `json:"props"`
 }
 
-// database_api.find_witnesses 用
-type DatabaseWitness struct {
-	Owner                 string `json:"owner"`
-	LastConfirmedBlockNum uint32 `json:"last_confirmed_block_num"`
-}
-
-type FindWitnessesResult struct {
-	Witnesses []DatabaseWitness `json:"witnesses"`
-}
-
-// condenser_api.get_block 用
 type Block struct {
 	Timestamp string `json:"timestamp"`
 	Witness   string `json:"witness"`
@@ -215,18 +208,6 @@ func loadConfig() (Config, error) {
 	// RPC URLs
 	// ------------------------------------------------------------
 
-	// 新方式:
-	//
-	// STEEM_RPC_URL_1=https://api.steemit.com
-	// STEEM_RPC_URL_2=https://...
-	// STEEM_RPC_URL_3=https://...
-	//
-	// 旧方式:
-	//
-	// STEEM_RPC_URL=https://api.steemit.com
-	//
-	// STEEM_RPC_URL_1 がない場合は STEEM_RPC_URL を使用。
-
 	for i := 1; i <= maxRPCURLs; i++ {
 
 		name := fmt.Sprintf(
@@ -312,7 +293,7 @@ func loadConfig() (Config, error) {
 		)
 	}
 
-	// Backward compatibility with the v1.1.0 environment variables.
+	// Backward compatibility with v1.1.0
 	if len(cfg.SigningKeys) == 0 {
 
 		primary := os.Getenv("STEEM_PRIMARY_SIGNING_KEY")
@@ -347,7 +328,7 @@ func loadConfig() (Config, error) {
 		)
 	}
 
-	// Duplicate key check.
+	// Duplicate key check
 	for i := 0; i < len(cfg.SigningKeys); i++ {
 
 		if cfg.SigningKeys[i] == "" {
@@ -418,7 +399,6 @@ func (c *Controller) recordRPCFailure() {
 		return
 	}
 
-	// 次のRPC URLが存在する場合
 	if c.currentRPCIndex+1 < len(c.cfg.RPCURLs) {
 
 		next := c.currentRPCIndex + 1
@@ -435,13 +415,10 @@ func (c *Controller) recordRPCFailure() {
 		return
 	}
 
-	// 3 URLすべて失敗
 	log.Printf(
 		"All configured RPC endpoints have failed.",
 	)
 
-	// 現在のURLでカウンターを0に戻す。
-	// API障害だけではFailoverしない。
 	c.rpcFailureCount = 0
 
 	log.Printf(
@@ -475,9 +452,10 @@ func (c *Controller) initialize() error {
 	}
 
 	log.Printf(
-		"Current witness state: signing_key=%s total_missed=%d",
+		"Current witness state: signing_key=%s total_missed=%d last_confirmed_block=%d",
 		w.SigningKey,
 		w.TotalMissed,
+		w.LastConfirmedBlockNum,
 	)
 
 	if !c.state.Initialized {
@@ -512,36 +490,23 @@ func (c *Controller) check(
 	w, err := c.getWitness()
 
 	if err != nil {
-		// --------------------------------------------------------
-		// 重要:
-		//
-		// API/RPC失敗ではFailoverしない。
-		//
-		// MISSを取得できていないため、
-		// Failover条件そのものが成立していない。
-		// --------------------------------------------------------
+		// RPC失敗ではFailoverしない。
 		return err
 	}
 
 	// ------------------------------------------------------------
-	// Block Age
+	// Last generated block / Block Age
+	// ------------------------------------------------------------
+	//
+	// これは表示用情報。
+	// Block Ageの取得失敗はMISS監視に影響させない。
 	// ------------------------------------------------------------
 
-	blockNum, blockTime, blockAge, err := c.getBlockAge()
+	c.logLastGeneratedBlock(w)
 
-	if err != nil {
-		log.Printf(
-			"Block Age error: %v",
-			err,
-		)
-	} else {
-		log.Printf(
-			"last_confirmed_block=%d block_time=%s block_age=%s",
-			blockNum,
-			blockTime.UTC().Format("2006-01-02 15:04:05"),
-			formatElapsed(blockAge),
-		)
-	}
+	// ------------------------------------------------------------
+	// Witness状態
+	// ------------------------------------------------------------
 
 	log.Printf(
 		"witness=%s signing_key=%s total_missed=%d last=%d rpc=%s",
@@ -553,12 +518,13 @@ func (c *Controller) check(
 	)
 
 	// ------------------------------------------------------------
-	// Find current signing key in the configured failover chain.
+	// 現在のSigning KeyをFailover Chainから検索
 	// ------------------------------------------------------------
 
 	currentIndex := -1
 
 	for i, key := range c.cfg.SigningKeys {
+
 		if w.SigningKey == key {
 			currentIndex = i
 			break
@@ -579,7 +545,7 @@ func (c *Controller) check(
 	}
 
 	// ------------------------------------------------------------
-	// Last key is the terminal/failsafe key.
+	// 最後のキーなら監視停止
 	// ------------------------------------------------------------
 
 	if currentIndex == len(c.cfg.SigningKeys)-1 {
@@ -608,10 +574,7 @@ func (c *Controller) check(
 	}
 
 	// ------------------------------------------------------------
-	// 最重要:
-	//
-	// total_missed が「ちょうど +1」の場合だけFailover。
-	// +2以上の場合はFailoverしない。
+	// MISSがちょうど+1の場合だけFailover
 	// ------------------------------------------------------------
 
 	if w.TotalMissed != c.state.LastTotalMissed+1 {
@@ -662,11 +625,6 @@ func (c *Controller) check(
 		return err
 	}
 
-	// ------------------------------------------------------------
-	// If the target is the last key, stop monitoring.
-	// Otherwise continue with the next stage on the next check.
-	// ------------------------------------------------------------
-
 	if targetIndex == len(c.cfg.SigningKeys)-1 {
 
 		log.Printf(
@@ -680,50 +638,105 @@ func (c *Controller) check(
 }
 
 // ------------------------------------------------------------
-// Block Age
+// Last generated block / Block Age
+// ------------------------------------------------------------
+//
+// 監視対象Witness自身の
+//
+//     last_confirmed_block_num
+//
+// を取得し、そのブロックのtimestampからBlock Ageを計算する。
+//
+// database_api.find_witnessesは使用しない。
 // ------------------------------------------------------------
 
-// database_api.find_witnessesから
-// last_confirmed_block_numを取得する。
-func (c *Controller) getLastConfirmedBlockNum() (uint32, error) {
+func (c *Controller) logLastGeneratedBlock(
+	w *Witness,
+) {
 
-	var result FindWitnessesResult
+	blockNum := w.LastConfirmedBlockNum
 
-	err := c.api.CallWithResult(
-		"database_api",
-		"find_witnesses",
-		[]interface{}{
-			map[string]interface{}{
-				"owners": []string{c.cfg.Witness},
-			},
-		},
-		&result,
+	if blockNum == 0 {
+
+		log.Printf(
+			"LAST GENERATED BLOCK: block=0 age=unknown",
+		)
+
+		return
+	}
+
+	block, err := c.getBlock(blockNum)
+
+	if err != nil {
+
+		log.Printf(
+			"Block Age unavailable: block=%d error=%v",
+			blockNum,
+			err,
+		)
+
+		return
+	}
+
+	blockTime, err := parseBlockTimestamp(
+		block.Timestamp,
 	)
 
 	if err != nil {
 
-		c.recordRPCFailure()
-
-		return 0, fmt.Errorf(
-			"failed to get witness from database_api.find_witnesses: %w",
+		log.Printf(
+			"Block Age unavailable: block=%d timestamp=%q error=%v",
+			blockNum,
+			block.Timestamp,
 			err,
 		)
+
+		return
 	}
 
-	c.recordRPCSuccess()
+	age := time.Since(blockTime)
 
-	if len(result.Witnesses) == 0 {
-		return 0, fmt.Errorf(
-			"witness not found: %s",
+	if age < 0 {
+		age = 0
+	}
+
+	// ------------------------------------------------------------
+	// 重要:
+	//
+	// last_confirmed_block_numは監視対象Witnessから取得している。
+	// さらに実際のブロックのwitnessも確認する。
+	// ------------------------------------------------------------
+
+	if block.Witness != c.cfg.Witness {
+
+		log.Printf(
+			"LAST GENERATED BLOCK WARNING: block=%d witness=%s expected=%s time=%s age=%s",
+			blockNum,
+			block.Witness,
 			c.cfg.Witness,
+			blockTime.UTC().Format("2006-01-02 15:04:05"),
+			formatElapsed(age),
 		)
+
+		return
 	}
 
-	return result.Witnesses[0].LastConfirmedBlockNum, nil
+	log.Printf(
+		"LAST GENERATED BLOCK: block=%d witness=%s time=%s age=%s",
+		blockNum,
+		block.Witness,
+		blockTime.UTC().Format("2006-01-02 15:04:05"),
+		formatElapsed(age),
+	)
 }
 
-// condenser_api.get_blockでブロックを取得する。
-func (c *Controller) getBlock(blockNum uint32) (*Block, error) {
+// ------------------------------------------------------------
+// getBlock
+// ------------------------------------------------------------
+
+func (c *Controller) getBlock(
+	blockNum uint32,
+) (*Block, error) {
 
 	var result Block
 
@@ -747,59 +760,44 @@ func (c *Controller) getBlock(blockNum uint32) (*Block, error) {
 
 	c.recordRPCSuccess()
 
+	if result.Timestamp == "" {
+
+		return nil, fmt.Errorf(
+			"block %d returned empty timestamp",
+			blockNum,
+		)
+	}
+
 	return &result, nil
 }
 
-// 最後に確認したブロックの生成時刻からの経過時間を取得。
-func (c *Controller) getBlockAge() (
-	uint32,
-	time.Time,
-	time.Duration,
-	error,
-) {
+// ------------------------------------------------------------
+// Block timestamp
+// ------------------------------------------------------------
 
-	blockNum, err := c.getLastConfirmedBlockNum()
+func parseBlockTimestamp(
+	value string,
+) (time.Time, error) {
 
-	if err != nil {
-		return 0, time.Time{}, 0, err
-	}
+	// Steemのblock timestamp:
+	//
+	// 2026-08-20T14:28:12
+	//
+	// UTCとして解釈する。
 
-	if blockNum == 0 {
-		return 0, time.Time{}, 0, errors.New(
-			"last_confirmed_block_num is 0",
-		)
-	}
-
-	block, err := c.getBlock(blockNum)
-
-	if err != nil {
-		return 0, time.Time{}, 0, err
-	}
-
-	blockTime, err := time.Parse(
+	return time.Parse(
 		"2006-01-02T15:04:05",
-		block.Timestamp,
+		value,
 	)
-
-	if err != nil {
-		return 0, time.Time{}, 0, fmt.Errorf(
-			"invalid block timestamp %q: %w",
-			block.Timestamp,
-			err,
-		)
-	}
-
-	age := time.Since(blockTime)
-
-	if age < 0 {
-		age = 0
-	}
-
-	return blockNum, blockTime, age, nil
 }
 
-// Block AgeをH:MM:SS形式で表示。
-func formatElapsed(d time.Duration) string {
+// ------------------------------------------------------------
+// Block Age表示
+// ------------------------------------------------------------
+
+func formatElapsed(
+	d time.Duration,
+) string {
 
 	if d < 0 {
 		d = 0
@@ -846,10 +844,6 @@ func (c *Controller) failover(
 		Fee: "0.000 STEEM",
 	}
 
-	// ------------------------------------------------------------
-	// Broadcast
-	// ------------------------------------------------------------
-
 	result, err := c.broadcastWithFailover(
 		op,
 	)
@@ -862,10 +856,6 @@ func (c *Controller) failover(
 		"witness_update broadcast accepted: %s",
 		string(result),
 	)
-
-	// ------------------------------------------------------------
-	// Blockchain上で本当に変更されたことを確認する。
-	// ------------------------------------------------------------
 
 	if err := c.waitForSigningKey(
 		targetSigningKey,
@@ -912,19 +902,14 @@ func (c *Controller) broadcastWithFailover(
 			err,
 		)
 
-		// 現在のendpointが3回失敗した場合、
-		// recordRPCFailure()が次のendpointへ切り替える。
-
 		if c.rpcFailureCount == 0 {
 
-			// 全RPC endpointを試した
 			return nil, fmt.Errorf(
 				"failed to broadcast witness_update: all RPC endpoints failed: %w",
 				err,
 			)
 		}
 
-		// 少し待ってから再試行
 		time.Sleep(time.Second)
 	}
 }
@@ -979,14 +964,16 @@ func (c *Controller) waitForSigningKey(
 // getWitness
 // ------------------------------------------------------------
 //
-// 1つのRPC URLで3回連続失敗
-//     ↓
-// 次のRPC URL
+// condenser_api.get_witness_by_account
 //
-// 最大3 URL
+// ここで監視対象Witness自身の情報を取得する。
 //
-// 重要:
-// RPC失敗ではFailover条件を作らない。
+//     STEEM_WITNESS
+//          ↓
+// get_witness_by_account
+//          ↓
+// last_confirmed_block_num
+//
 // ------------------------------------------------------------
 
 func (c *Controller) getWitness() (*Witness, error) {
@@ -1033,12 +1020,8 @@ func (c *Controller) getWitness() (*Witness, error) {
 			err,
 		)
 
-		// 3回失敗して次のURLに切り替わった場合、
-		// setRPC()によってrpcFailureCount=0になる。
-
 		if c.rpcFailureCount == 0 {
 
-			// 全RPC URLが失敗した場合
 			if c.currentRPCIndex == len(c.cfg.RPCURLs)-1 {
 
 				log.Printf(
@@ -1052,7 +1035,6 @@ func (c *Controller) getWitness() (*Witness, error) {
 			}
 		}
 
-		// 同じURLでまだ3回未満なら再試行
 		time.Sleep(200 * time.Millisecond)
 	}
 }
