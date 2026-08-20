@@ -53,7 +53,7 @@ type Witness struct {
 	SigningKey  string `json:"signing_key"`
 	TotalMissed uint64 `json:"total_missed"`
 
-	// 監視対象Witnessが最後に確認したブロック番号
+	// 監視対象Witness自身の最後に確認したブロック
 	LastConfirmedBlockNum uint32 `json:"last_confirmed_block_num"`
 
 	Props struct {
@@ -84,6 +84,9 @@ type Controller struct {
 
 	state State
 
+	// 表示用タイムゾーン
+	jst *time.Location
+
 	// 現在使用しているRPC URLのインデックス
 	currentRPCIndex int
 
@@ -96,7 +99,22 @@ type Controller struct {
 
 func main() {
 
+	// ------------------------------------------------------------
+	// JST
+	// ------------------------------------------------------------
+
+	jst, err := time.LoadLocation("Asia/Tokyo")
+	if err != nil {
+		log.Fatalf(
+			"failed to load JST timezone: %v",
+			err,
+		)
+	}
+
+	// ------------------------------------------------------------
 	// --version または -v
+	// ------------------------------------------------------------
+
 	if len(os.Args) > 1 {
 		switch os.Args[1] {
 		case "--version", "-v":
@@ -113,20 +131,40 @@ func main() {
 		log.Fatal(err)
 	}
 
-	log.Printf("Starting Steem witness failover controller")
-	log.Printf("Version   = %s", Version)
+	log.Printf(
+		"Starting Steem witness failover controller",
+	)
+
+	log.Printf(
+		"Version   = %s",
+		Version,
+	)
 
 	for i, url := range cfg.RPCURLs {
-		log.Printf("RPC[%d]    = %s", i+1, url)
+		log.Printf(
+			"RPC[%d]    = %s",
+			i+1,
+			url,
+		)
 	}
 
-	log.Printf("Witness   = %s", cfg.Witness)
+	log.Printf(
+		"Witness   = %s",
+		cfg.Witness,
+	)
 
 	for i, key := range cfg.SigningKeys {
-		log.Printf("SigningKey[%d] = %s", i+1, key)
+		log.Printf(
+			"SigningKey[%d] = %s",
+			i+1,
+			key,
+		)
 	}
 
-	log.Printf("Interval  = %s", cfg.PollInterval)
+	log.Printf(
+		"Interval  = %s",
+		cfg.PollInterval,
+	)
 
 	state, err := loadState(cfg.StateFile)
 	if err != nil {
@@ -136,6 +174,7 @@ func main() {
 	c := &Controller{
 		cfg:             cfg,
 		state:           state,
+		jst:             jst,
 		currentRPCIndex: 0,
 	}
 
@@ -157,42 +196,75 @@ func main() {
 
 	// 起動直後にも一度チェック。
 	if err := c.check(ctx); err != nil {
-		if errors.Is(err, ErrMonitoringStopped) {
-			log.Printf("Monitoring stopped.")
+
+		if errors.Is(
+			err,
+			ErrMonitoringStopped,
+		) {
+			log.Printf(
+				"Monitoring stopped.",
+			)
 			return
 		}
 
-		log.Printf("check error: %v", err)
+		log.Printf(
+			"check error: %v",
+			err,
+		)
 	}
 
 	for {
 		select {
+
 		case <-ctx.Done():
-			log.Printf("Stopping.")
+
+			log.Printf(
+				"Stopping.",
+			)
+
 			return
 
 		case <-ticker.C:
+
 			if err := c.check(ctx); err != nil {
-				if errors.Is(err, ErrMonitoringStopped) {
-					log.Printf("Monitoring stopped.")
+
+				if errors.Is(
+					err,
+					ErrMonitoringStopped,
+				) {
+					log.Printf(
+						"Monitoring stopped.",
+					)
 					return
 				}
 
-				log.Printf("check error: %v", err)
+				log.Printf(
+					"check error: %v",
+					err,
+				)
 			}
 		}
 	}
 }
 
+// ------------------------------------------------------------
+// Config
+// ------------------------------------------------------------
+
 func loadConfig() (Config, error) {
 
-	pollSeconds := envInt("POLL_SECONDS", 2)
+	pollSeconds := envInt(
+		"POLL_SECONDS",
+		2,
+	)
 
 	cfg := Config{
 		Witness:          os.Getenv("STEEM_WITNESS"),
 		ActivePrivateKey: os.Getenv("STEEM_ACTIVE_PRIVATE_KEY"),
 
-		PollInterval: time.Duration(pollSeconds) * time.Second,
+		PollInterval: time.Duration(
+			pollSeconds,
+		) * time.Second,
 
 		StateFile: envString(
 			"STATE_FILE",
@@ -200,7 +272,10 @@ func loadConfig() (Config, error) {
 		),
 
 		VerifyTimeout: time.Duration(
-			envInt("VERIFY_TIMEOUT_SECONDS", 60),
+			envInt(
+				"VERIFY_TIMEOUT_SECONDS",
+				60,
+			),
 		) * time.Second,
 	}
 
@@ -248,8 +323,11 @@ func loadConfig() (Config, error) {
 
 	// 重複URLチェック
 	for i := 0; i < len(cfg.RPCURLs); i++ {
+
 		for j := i + 1; j < len(cfg.RPCURLs); j++ {
+
 			if cfg.RPCURLs[i] == cfg.RPCURLs[j] {
+
 				return cfg, fmt.Errorf(
 					"duplicate RPC URL: %s",
 					cfg.RPCURLs[i],
@@ -293,12 +371,20 @@ func loadConfig() (Config, error) {
 		)
 	}
 
-	// Backward compatibility with v1.1.0
+	// Backward compatibility
 	if len(cfg.SigningKeys) == 0 {
 
-		primary := os.Getenv("STEEM_PRIMARY_SIGNING_KEY")
-		backup := os.Getenv("STEEM_BACKUP_SIGNING_KEY")
-		failsafe := os.Getenv("STEEM_FAILSAFE_SIGNING_KEY")
+		primary := os.Getenv(
+			"STEEM_PRIMARY_SIGNING_KEY",
+		)
+
+		backup := os.Getenv(
+			"STEEM_BACKUP_SIGNING_KEY",
+		)
+
+		failsafe := os.Getenv(
+			"STEEM_FAILSAFE_SIGNING_KEY",
+		)
 
 		if primary != "" {
 			cfg.SigningKeys = append(
@@ -332,6 +418,7 @@ func loadConfig() (Config, error) {
 	for i := 0; i < len(cfg.SigningKeys); i++ {
 
 		if cfg.SigningKeys[i] == "" {
+
 			return cfg, fmt.Errorf(
 				"empty signing key at index %d",
 				i+1,
@@ -341,6 +428,7 @@ func loadConfig() (Config, error) {
 		for j := i + 1; j < len(cfg.SigningKeys); j++ {
 
 			if cfg.SigningKeys[i] == cfg.SigningKeys[j] {
+
 				return cfg, fmt.Errorf(
 					"duplicate signing key at positions %d and %d",
 					i+1,
@@ -359,7 +447,8 @@ func loadConfig() (Config, error) {
 
 func (c *Controller) setRPC(index int) {
 
-	if index < 0 || index >= len(c.cfg.RPCURLs) {
+	if index < 0 ||
+		index >= len(c.cfg.RPCURLs) {
 		return
 	}
 
@@ -399,7 +488,8 @@ func (c *Controller) recordRPCFailure() {
 		return
 	}
 
-	if c.currentRPCIndex+1 < len(c.cfg.RPCURLs) {
+	if c.currentRPCIndex+1 <
+		len(c.cfg.RPCURLs) {
 
 		next := c.currentRPCIndex + 1
 
@@ -447,6 +537,7 @@ func (c *Controller) recordRPCSuccess() {
 func (c *Controller) initialize() error {
 
 	w, err := c.getWitness()
+
 	if err != nil {
 		return err
 	}
@@ -490,23 +581,14 @@ func (c *Controller) check(
 	w, err := c.getWitness()
 
 	if err != nil {
-		// RPC失敗ではFailoverしない。
 		return err
 	}
 
 	// ------------------------------------------------------------
-	// Last generated block / Block Age
-	// ------------------------------------------------------------
-	//
-	// これは表示用情報。
-	// Block Ageの取得失敗はMISS監視に影響させない。
+	// Last Generated Block / Block Age
 	// ------------------------------------------------------------
 
 	c.logLastGeneratedBlock(w)
-
-	// ------------------------------------------------------------
-	// Witness状態
-	// ------------------------------------------------------------
 
 	log.Printf(
 		"witness=%s signing_key=%s total_missed=%d last=%d rpc=%s",
@@ -526,7 +608,9 @@ func (c *Controller) check(
 	for i, key := range c.cfg.SigningKeys {
 
 		if w.SigningKey == key {
+
 			currentIndex = i
+
 			break
 		}
 	}
@@ -548,7 +632,8 @@ func (c *Controller) check(
 	// 最後のキーなら監視停止
 	// ------------------------------------------------------------
 
-	if currentIndex == len(c.cfg.SigningKeys)-1 {
+	if currentIndex ==
+		len(c.cfg.SigningKeys)-1 {
 
 		log.Printf(
 			"FAILSAFE signing key is active: %s",
@@ -566,9 +651,11 @@ func (c *Controller) check(
 	// MISS増加なし
 	// ------------------------------------------------------------
 
-	if w.TotalMissed <= c.state.LastTotalMissed {
+	if w.TotalMissed <=
+		c.state.LastTotalMissed {
 
-		c.state.LastTotalMissed = w.TotalMissed
+		c.state.LastTotalMissed =
+			w.TotalMissed
 
 		return c.saveState()
 	}
@@ -577,7 +664,8 @@ func (c *Controller) check(
 	// MISSがちょうど+1の場合だけFailover
 	// ------------------------------------------------------------
 
-	if w.TotalMissed != c.state.LastTotalMissed+1 {
+	if w.TotalMissed !=
+		c.state.LastTotalMissed+1 {
 
 		log.Printf(
 			"MISS increased by more than 1: %d -> %d. No failover.",
@@ -585,13 +673,16 @@ func (c *Controller) check(
 			w.TotalMissed,
 		)
 
-		c.state.LastTotalMissed = w.TotalMissed
+		c.state.LastTotalMissed =
+			w.TotalMissed
 
 		return c.saveState()
 	}
 
 	targetIndex := currentIndex + 1
-	targetSigningKey := c.cfg.SigningKeys[targetIndex]
+
+	targetSigningKey :=
+		c.cfg.SigningKeys[targetIndex]
 
 	log.Printf(
 		"FAILOVER condition detected: total_missed %d -> %d",
@@ -616,16 +707,24 @@ func (c *Controller) check(
 		return err
 	}
 
-	c.state.LastTotalMissed = w.TotalMissed
-	c.state.LastFailoverAt = time.Now().UTC().Format(time.RFC3339)
-	c.state.LastFailoverFrom = w.SigningKey
-	c.state.LastFailoverTo = targetSigningKey
+	c.state.LastTotalMissed =
+		w.TotalMissed
+
+	c.state.LastFailoverAt =
+		time.Now().UTC().Format(time.RFC3339)
+
+	c.state.LastFailoverFrom =
+		w.SigningKey
+
+	c.state.LastFailoverTo =
+		targetSigningKey
 
 	if err := c.saveState(); err != nil {
 		return err
 	}
 
-	if targetIndex == len(c.cfg.SigningKeys)-1 {
+	if targetIndex ==
+		len(c.cfg.SigningKeys)-1 {
 
 		log.Printf(
 			"FAILSAFE signing key confirmed. Monitoring will be stopped.",
@@ -638,23 +737,15 @@ func (c *Controller) check(
 }
 
 // ------------------------------------------------------------
-// Last generated block / Block Age
-// ------------------------------------------------------------
-//
-// 監視対象Witness自身の
-//
-//     last_confirmed_block_num
-//
-// を取得し、そのブロックのtimestampからBlock Ageを計算する。
-//
-// database_api.find_witnessesは使用しない。
+// Last Generated Block / Block Age
 // ------------------------------------------------------------
 
 func (c *Controller) logLastGeneratedBlock(
 	w *Witness,
 ) {
 
-	blockNum := w.LastConfirmedBlockNum
+	blockNum :=
+		w.LastConfirmedBlockNum
 
 	if blockNum == 0 {
 
@@ -665,7 +756,9 @@ func (c *Controller) logLastGeneratedBlock(
 		return
 	}
 
-	block, err := c.getBlock(blockNum)
+	block, err := c.getBlock(
+		blockNum,
+	)
 
 	if err != nil {
 
@@ -678,9 +771,10 @@ func (c *Controller) logLastGeneratedBlock(
 		return
 	}
 
-	blockTime, err := parseBlockTimestamp(
-		block.Timestamp,
-	)
+	blockTime, err :=
+		parseBlockTimestamp(
+			block.Timestamp,
+		)
 
 	if err != nil {
 
@@ -694,6 +788,13 @@ func (c *Controller) logLastGeneratedBlock(
 		return
 	}
 
+	// ------------------------------------------------------------
+	// Block Age
+	//
+	// blockTimeはUTC。
+	// 経過時間の計算はUTCのままでよい。
+	// ------------------------------------------------------------
+
 	age := time.Since(blockTime)
 
 	if age < 0 {
@@ -701,20 +802,26 @@ func (c *Controller) logLastGeneratedBlock(
 	}
 
 	// ------------------------------------------------------------
-	// 重要:
-	//
-	// last_confirmed_block_numは監視対象Witnessから取得している。
-	// さらに実際のブロックのwitnessも確認する。
+	// JST表示
+	// ------------------------------------------------------------
+
+	displayTime :=
+		blockTime.In(c.jst)
+
+	// ------------------------------------------------------------
+	// 実際のブロック生成Witnessを確認
 	// ------------------------------------------------------------
 
 	if block.Witness != c.cfg.Witness {
 
 		log.Printf(
-			"LAST GENERATED BLOCK WARNING: block=%d witness=%s expected=%s time=%s age=%s",
+			"LAST GENERATED BLOCK WARNING: block=%d witness=%s expected=%s time=%s JST age=%s",
 			blockNum,
 			block.Witness,
 			c.cfg.Witness,
-			blockTime.UTC().Format("2006-01-02 15:04:05"),
+			displayTime.Format(
+				"2006-01-02 15:04:05",
+			),
 			formatElapsed(age),
 		)
 
@@ -722,10 +829,12 @@ func (c *Controller) logLastGeneratedBlock(
 	}
 
 	log.Printf(
-		"LAST GENERATED BLOCK: block=%d witness=%s time=%s age=%s",
+		"LAST GENERATED BLOCK: block=%d witness=%s time=%s JST age=%s",
 		blockNum,
 		block.Witness,
-		blockTime.UTC().Format("2006-01-02 15:04:05"),
+		displayTime.Format(
+			"2006-01-02 15:04:05",
+		),
 		formatElapsed(age),
 	)
 }
@@ -779,11 +888,10 @@ func parseBlockTimestamp(
 	value string,
 ) (time.Time, error) {
 
-	// Steemのblock timestamp:
+	// Steem block timestampはUTC
 	//
-	// 2026-08-20T14:28:12
-	//
-	// UTCとして解釈する。
+	// 例:
+	// 2026-08-20T14:13:39
 
 	return time.Parse(
 		"2006-01-02T15:04:05",
@@ -803,9 +911,14 @@ func formatElapsed(
 		d = 0
 	}
 
-	hours := int(d / time.Hour)
-	minutes := int((d % time.Hour) / time.Minute)
-	seconds := int((d % time.Minute) / time.Second)
+	hours :=
+		int(d / time.Hour)
+
+	minutes :=
+		int((d % time.Hour) / time.Minute)
+
+	seconds :=
+		int((d % time.Minute) / time.Second)
 
 	return fmt.Sprintf(
 		"%d:%02d:%02d",
@@ -844,9 +957,8 @@ func (c *Controller) failover(
 		Fee: "0.000 STEEM",
 	}
 
-	result, err := c.broadcastWithFailover(
-		op,
-	)
+	result, err :=
+		c.broadcastWithFailover(op)
 
 	if err != nil {
 		return err
@@ -882,10 +994,11 @@ func (c *Controller) broadcastWithFailover(
 
 	for {
 
-		result, err := c.bcast.SendWith(
-			op,
-			c.cfg.ActivePrivateKey,
-		)
+		result, err :=
+			c.bcast.SendWith(
+				op,
+				c.cfg.ActivePrivateKey,
+			)
 
 		if err == nil {
 
@@ -923,7 +1036,8 @@ func (c *Controller) waitForSigningKey(
 	timeout time.Duration,
 ) error {
 
-	deadline := time.Now().Add(timeout)
+	deadline :=
+		time.Now().Add(timeout)
 
 	for time.Now().Before(deadline) {
 
@@ -962,18 +1076,6 @@ func (c *Controller) waitForSigningKey(
 
 // ------------------------------------------------------------
 // getWitness
-// ------------------------------------------------------------
-//
-// condenser_api.get_witness_by_account
-//
-// ここで監視対象Witness自身の情報を取得する。
-//
-//     STEEM_WITNESS
-//          ↓
-// get_witness_by_account
-//          ↓
-// last_confirmed_block_num
-//
 // ------------------------------------------------------------
 
 func (c *Controller) getWitness() (*Witness, error) {
@@ -1022,7 +1124,8 @@ func (c *Controller) getWitness() (*Witness, error) {
 
 		if c.rpcFailureCount == 0 {
 
-			if c.currentRPCIndex == len(c.cfg.RPCURLs)-1 {
+			if c.currentRPCIndex ==
+				len(c.cfg.RPCURLs)-1 {
 
 				log.Printf(
 					"All RPC endpoints failed for get_witness_by_account.",
@@ -1035,7 +1138,9 @@ func (c *Controller) getWitness() (*Witness, error) {
 			}
 		}
 
-		time.Sleep(200 * time.Millisecond)
+		time.Sleep(
+			200 * time.Millisecond,
+		)
 	}
 }
 
@@ -1047,7 +1152,8 @@ func loadState(
 	filename string,
 ) (State, error) {
 
-	data, err := os.ReadFile(filename)
+	data, err :=
+		os.ReadFile(filename)
 
 	if err != nil {
 
@@ -1076,17 +1182,19 @@ func loadState(
 
 func (c *Controller) saveState() error {
 
-	data, err := json.MarshalIndent(
-		c.state,
-		"",
-		"  ",
-	)
+	data, err :=
+		json.MarshalIndent(
+			c.state,
+			"",
+			"  ",
+		)
 
 	if err != nil {
 		return err
 	}
 
-	tmp := c.cfg.StateFile + ".tmp"
+	tmp :=
+		c.cfg.StateFile + ".tmp"
 
 	if err := os.WriteFile(
 		tmp,
@@ -1135,7 +1243,8 @@ func envInt(
 		return defaultValue
 	}
 
-	n, err := strconv.Atoi(value)
+	n, err :=
+		strconv.Atoi(value)
 
 	if err != nil {
 		return defaultValue
