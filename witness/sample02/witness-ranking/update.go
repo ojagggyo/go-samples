@@ -82,33 +82,30 @@ func RunUpdate(cfg Config) error {
 		target := span.Subtract(now)
 
 		oldFile, err := FindHistoryAtOrBefore(cfg, target)
+
+		var previous []Witness
+
 		if err != nil {
-			// 現在のShellと同様、過去ファイルがなければ現在の値を使う。
-			log.Printf("[%s] %v; use current data", span.Name, err)
-
-			oldFile = filepath.Join(cfg.DataDir, "ranking_last_"+span.Name+".csv")
-
-			if err := WriteWitnessCSV(oldFile, current, false); err != nil {
-				return err
-			}
+			// 比較対象となる過去データが存在しない。
+			//
+			// current を比較元として保存すると MISS が 0 になり、
+			// ranking.js で緑表示されてしまう。
+			// previous を空にして CompareWitnesses に渡すことで、
+			// Miss = -1 とし、ピンク表示にする。
+			log.Printf("[%s] %v; no previous data", span.Name, err)
 		} else {
 			lastFile := filepath.Join(cfg.DataDir, "ranking_last_"+span.Name+".csv")
 
-			oldData, err := ReadWitnessCSV(oldFile)
+			previous, err = ReadWitnessCSV(oldFile)
 			if err != nil {
 				return fmt.Errorf("read old %s: %w", span.Name, err)
 			}
 
-			if err := WriteWitnessCSV(lastFile, oldData, false); err != nil {
+			if err := WriteWitnessCSV(lastFile, previous, false); err != nil {
 				return err
 			}
 
 			log.Printf("[%s] compare with %s", span.Name, oldFile)
-		}
-
-		previous, err := ReadWitnessCSV(oldFile)
-		if err != nil {
-			return fmt.Errorf("read previous %s: %w", span.Name, err)
 		}
 
 		compared := CompareWitnesses(current, previous)
