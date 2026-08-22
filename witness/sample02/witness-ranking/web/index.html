@@ -1,0 +1,482 @@
+<!doctype html>
+<html lang="ja">
+
+<head>
+  <meta charset="utf-8">
+
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+
+  <title>Witness Ranking</title>
+
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+  <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels"></script>
+
+  <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation"></script>
+
+
+  <style>
+    body {
+      font-family: Meiryo, sans-serif;
+      margin: 0;
+    }
+
+
+    #menu {
+      position: sticky;
+      top: 0;
+
+      background: white;
+
+      padding: 10px;
+
+      border-bottom: 1px solid #ccc;
+
+      z-index: 100;
+    }
+
+
+    .menu-row {
+      margin-bottom: 8px;
+    }
+
+
+    .menu-title {
+      display: inline-block;
+
+      width: 80px;
+
+      font-weight: bold;
+    }
+
+
+    button {
+      font-size: 15px;
+
+      padding: 5px 14px;
+
+      margin-right: 5px;
+
+      cursor: pointer;
+    }
+
+
+    button.active {
+      font-weight: bold;
+
+      border: 2px solid black;
+
+      background: #ddd;
+    }
+
+
+    #chart-area {
+      position: relative;
+
+      width: 100%;
+    }
+  </style>
+
+</head>
+
+
+<body>
+
+
+  <div id="menu">
+
+
+    <div class="menu-row">
+
+      <span class="menu-title">
+        表示件数
+      </span>
+
+      <button class="limit-button" data-limit="21">
+        21
+      </button>
+
+      <button class="limit-button" data-limit="50">
+        50
+      </button>
+
+      <button class="limit-button" data-limit="100">
+        100
+      </button>
+
+      <button class="limit-button" data-limit="300">
+        300
+      </button>
+
+    </div>
+
+
+
+    <div class="menu-row">
+
+      <span class="menu-title">
+        期間
+      </span>
+
+      <button class="span-button" data-span="hour">
+        1時間
+      </button>
+
+      <button class="span-button" data-span="day">
+        1日
+      </button>
+
+      <button class="span-button" data-span="week">
+        1週間
+      </button>
+
+      <button class="span-button" data-span="month">
+        1ヶ月
+      </button>
+
+      <button class="span-button" data-span="year">
+        1年
+      </button>
+
+    </div>
+
+
+  </div>
+
+
+
+  <div id="chart-area">
+
+    <canvas id="myChart"></canvas>
+
+  </div>
+
+
+
+  <script>
+
+
+    /*
+     * URLパラメータ取得
+     *
+     * 例
+     *
+     * ?limit=100&span=week
+     */
+    const params =
+      new URLSearchParams(
+        window.location.search
+      );
+
+
+
+    /*
+     * 表示可能な件数
+     */
+    const allowedLimits = [
+      21,
+      50,
+      100,
+      300
+    ];
+
+
+
+    /*
+     * 表示可能な期間
+     */
+    const allowedSpans = [
+      "hour",
+      "day",
+      "week",
+      "month",
+      "year"
+    ];
+
+
+
+    /*
+     * limit
+     */
+    let limit =
+      Number(
+        params.get("limit")
+      );
+
+
+    if (
+      !allowedLimits.includes(limit)
+    ) {
+      limit = 21;
+    }
+
+
+
+    /*
+     * span
+     */
+    let span =
+      params.get("span");
+
+
+    if (
+      !allowedSpans.includes(span)
+    ) {
+      span = "hour";
+    }
+
+
+
+    /*
+     * ranking.jsが使用
+     */
+    let user = "";
+
+
+
+    /*
+     * detail.htmlへ渡す値
+     */
+    let hours = span;
+
+
+
+    /*
+     * Chart作成後
+     */
+    function afterMakeChart(len) {
+
+      console.log(
+        "chart rows:",
+        len
+      );
+
+    }
+
+
+
+    /*
+     * 現在の状態をURLへ反映
+     */
+    function updateURL() {
+
+      const url =
+        new URL(
+          window.location.href
+        );
+
+
+      url.searchParams.set(
+        "limit",
+        limit
+      );
+
+
+      url.searchParams.set(
+        "span",
+        span
+      );
+
+
+      history.replaceState(
+        null,
+        "",
+        url.toString()
+      );
+
+    }
+
+
+
+    /*
+     * ボタンの選択状態を更新
+     */
+    function updateButtons() {
+
+
+      document
+        .querySelectorAll(
+          ".limit-button"
+        )
+        .forEach(
+          button => {
+
+
+            button.classList.toggle(
+
+              "active",
+
+              Number(
+                button.dataset.limit
+              )
+
+              ===
+
+              limit
+
+            );
+
+
+          }
+        );
+
+
+
+      document
+        .querySelectorAll(
+          ".span-button"
+        )
+        .forEach(
+          button => {
+
+
+            button.classList.toggle(
+
+              "active",
+
+              button.dataset.span
+              ===
+              span
+
+            );
+
+
+          }
+        );
+
+
+    }
+
+
+
+    /*
+     * 表示件数ボタン
+     */
+    document
+      .querySelectorAll(
+        ".limit-button"
+      )
+      .forEach(
+        button => {
+
+
+          button.addEventListener(
+
+            "click",
+
+            () => {
+
+
+              limit = Number(
+                button.dataset.limit
+              );
+
+
+              updateURL();
+
+              updateButtons();
+
+              loadRanking();
+
+
+            }
+
+          );
+
+
+        }
+      );
+
+
+
+    /*
+     * 期間ボタン
+     */
+    document
+      .querySelectorAll(
+        ".span-button"
+      )
+      .forEach(
+        button => {
+
+
+          button.addEventListener(
+
+            "click",
+
+            () => {
+
+
+              span =
+                button.dataset.span;
+
+
+              hours =
+                span;
+
+
+              updateURL();
+
+              updateButtons();
+
+              loadRanking();
+
+
+            }
+
+          );
+
+
+        }
+      );
+
+
+  </script>
+
+
+
+  <script src="/ranking.js"></script>
+
+  <script src="/csvread2.js"></script>
+
+
+
+  <script>
+
+
+    /*
+     * 選択された期間の
+     * CSVを読み込む
+     *
+     * ranking_hour.csv
+     * ranking_day.csv
+     * ranking_week.csv
+     * ranking_month.csv
+     * ranking_year.csv
+     */
+    function loadRanking() {
+
+      csvread(
+        "ranking_" + span
+      );
+
+    }
+
+
+
+    /*
+     * 最初の表示
+     */
+    updateURL();
+
+    updateButtons();
+
+    loadRanking();
+
+
+  </script>
+
+
+</body>
+
+</html>
