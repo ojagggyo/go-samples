@@ -68,35 +68,31 @@ func main() {
 	ctx, cancelBrowser := chromedp.NewContext(allocCtx)
 	defer cancelBrowser()
 	timeout := time.Duration(cfg.TimeoutSeconds) * time.Second
-	ctx, cancelTimeout := context.WithTimeout(ctx, timeout)
-	defer cancelTimeout()
+	loginCtx, cancelLogin := context.WithTimeout(ctx, timeout)
+	defer cancelLogin()
 
 	var body, currentURL string
-	err = chromedp.Run(ctx,
+	err = chromedp.Run(loginCtx,
 		chromedp.Navigate(cfg.LoginURL),
 		chromedp.WaitReady("body", chromedp.ByQuery),
 		chromedp.ActionFunc(func(ctx context.Context) error {
 			return login(ctx, cfg, user, pass)
 		}),
-		chromedp.Sleep(5*time.Second),
-		chromedp.Location(&currentURL),
-		chromedp.Text("body", &body, chromedp.ByQuery),
 	)
+	cancelLogin()
 	if err != nil {
 		saveScreenshot(ctx, "error.png")
 		log.Fatalf("ログイン操作に失敗しました: %v（error.png を確認してください）", err)
 	}
 
-	if err := accessDeniedError(body); err != nil {
+	if err := waitForLoginCompletion(ctx, cfg); err != nil {
 		saveScreenshot(ctx, "error.png")
-		log.Fatal(err)
-	}
-	if strings.Contains(currentURL, "login") {
-		saveScreenshot(ctx, "error.png")
-		log.Fatal("ログイン後もログイン画面です。ID・パスワードまたは追加認証を確認してください")
+		log.Fatalf("ログインを完了できません: %v", err)
 	}
 
-	err = chromedp.Run(ctx,
+	billingCtx, cancelBilling := context.WithTimeout(ctx, timeout)
+	defer cancelBilling()
+	err = chromedp.Run(billingCtx,
 		chromedp.Navigate(cfg.BillingURL),
 		chromedp.WaitReady("body", chromedp.ByQuery),
 		chromedp.Sleep(5*time.Second),
