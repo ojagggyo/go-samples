@@ -7,6 +7,8 @@
   "google_token_file": "token.json",
   "google_calendar_id": "primary",
   "username_selectors": [
+    "input[name='username']",
+    "input#username",
     "input[name='loginId']",
     "input[name='userId']",
     "input[autocomplete='username']",

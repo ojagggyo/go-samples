@@ -80,12 +80,17 @@ func main() {
 		}),
 		chromedp.Sleep(5*time.Second),
 		chromedp.Location(&currentURL),
+		chromedp.Text("body", &body, chromedp.ByQuery),
 	)
 	if err != nil {
 		saveScreenshot(ctx, "error.png")
 		log.Fatalf("ログイン操作に失敗しました: %v（error.png を確認してください）", err)
 	}
 
+	if err := accessDeniedError(body); err != nil {
+		saveScreenshot(ctx, "error.png")
+		log.Fatal(err)
+	}
 	if strings.Contains(currentURL, "login") {
 		saveScreenshot(ctx, "error.png")
 		log.Fatal("ログイン後もログイン画面です。ID・パスワードまたは追加認証を確認してください")
@@ -101,6 +106,10 @@ func main() {
 	if err != nil {
 		saveScreenshot(ctx, "error.png")
 		log.Fatalf("請求画面を取得できません: %v", err)
+	}
+	if err := accessDeniedError(body); err != nil {
+		saveScreenshot(ctx, "error.png")
+		log.Fatal(err)
 	}
 	if *debug {
 		fmt.Println(body)
@@ -126,6 +135,13 @@ func main() {
 		}
 	}
 	fmt.Printf("取得完了: 支払日=%s 金額=%d円 出力=%s\n", billing.PaymentDate, billing.AmountYen, *outputPath)
+}
+
+func accessDeniedError(body string) error {
+	if strings.HasPrefix(strings.ToLower(strings.TrimSpace(body)), "access denied") {
+		return errors.New("サイト側でアクセスが拒否されました（Access Denied）。ID・パスワードの正誤は判定できません。通常のChromeで手動ログインできるか確認してください（error.png を参照）")
+	}
+	return nil
 }
 
 func loadConfig(path string) (Config, error) {

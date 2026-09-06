@@ -4,13 +4,16 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"time"
 
+	"github.com/chromedp/cdproto/input"
 	"github.com/chromedp/chromedp"
 )
 
 // login supports both a single form and an ID -> Next -> password flow.
 func login(ctx context.Context, cfg Config, user, pass string) error {
+	log.Print("ログイン: ID入力欄を待機しています")
 	userTarget := loginTarget(cfg.UsernameSelectors, "")
 	passwordTarget := loginTarget(cfg.PasswordSelectors, "")
 	nextSelectors := cfg.NextSelectors
@@ -21,6 +24,7 @@ func login(ctx context.Context, cfg Config, user, pass string) error {
 	if err := fillLoginField(ctx, userTarget, user); err != nil {
 		return fmt.Errorf("ログインID欄: %w", err)
 	}
+	log.Print("ログイン: IDの入力を確認しました")
 	// Wait until either the password field or the next button is usable.
 	if err := waitLoginTarget(ctx, "("+passwordTarget+" || "+nextTarget+")"); err != nil {
 		return fmt.Errorf("パスワード欄または次へボタン: %w", err)
@@ -30,18 +34,24 @@ func login(ctx context.Context, cfg Config, user, pass string) error {
 		return err
 	}
 	if !hasPassword {
-		if err := chromedp.Run(ctx, chromedp.Click(nextTarget, chromedp.ByJSPath)); err != nil {
+		if err := clickLoginTarget(ctx, nextTarget); err != nil {
 			return fmt.Errorf("次へボタン: %w", err)
 		}
+		log.Print("ログイン: 次へをクリックしました。パスワード欄を待機しています")
 	}
 	if err := fillLoginField(ctx, passwordTarget, pass); err != nil {
 		return fmt.Errorf("パスワード欄: %w", err)
 	}
+	log.Print("ログイン: パスワードの入力を確認しました")
 	submitTarget := loginTarget(cfg.SubmitSelectors, "ログイン")
 	if err := waitLoginTarget(ctx, submitTarget); err != nil {
 		return fmt.Errorf("ログインボタン: %w", err)
 	}
-	return chromedp.Run(ctx, chromedp.Click(submitTarget, chromedp.ByJSPath))
+	if err := clickLoginTarget(ctx, submitTarget); err != nil {
+		return fmt.Errorf("ログインボタン: %w", err)
+	}
+	log.Print("ログイン: ログインボタンをクリックしました")
+	return nil
 }
 
 // Return a DOM expression selecting a visible, enabled element. Exact button
@@ -54,7 +64,8 @@ func loginTarget(selectors []string, label string) string {
 	l, _ := json.Marshal(label)
 	return fmt.Sprintf(`(() => {
 		const usable = e => e.getClientRects().length > 0 &&
-			getComputedStyle(e).visibility !== 'hidden' && !e.disabled;
+			getComputedStyle(e).visibility !== 'hidden' && !e.disabled &&
+			e.getAttribute('aria-disabled') !== 'true' && !e.readOnly;
 		const label = %s;
 		if (label) {
 			const button = Array.from(document.querySelectorAll('button, input[type="submit"], input[type="button"], a, [role="button"]'))
@@ -94,12 +105,31 @@ func waitLoginTarget(ctx context.Context, target string) error {
 }
 
 func fillLoginField(ctx context.Context, target, value string) error {
+	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
 	if err := waitLoginTarget(ctx, target); err != nil {
 		return err
 	}
-	// SendKeys generates input events needed by dynamically rendered forms.
-	return chromedp.Run(ctx,
-		chromedp.Evaluate("("+target+").value = ''", nil),
-		chromedp.SendKeys(target, value, chromedp.ByJSPath),
-	)
+	// Select existing text and use Chrome's text insertion so controlled forms
+	// receive a real input event without mutating their value behind their back.
+	var actual string
+	if err := chromedp.Run(ctx,
+		chromedp.Evaluate("(() => { const e = "+target+"; e.focus(); e.select(); })()", nil),
+		input.InsertText(value),
+		chromedp.Evaluate("("+target+").blur()", nil),
+		chromedp.Sleep(300*time.Millisecond),
+		chromedp.Evaluate("("+target+").value", &actual),
+	); err != nil {
+		return err
+	}
+	if actual != value {
+		return fmt.Errorf("入力内容が画面に反映されませんでした（入力値はログに出力しません）")
+	}
+	return nil
+}
+
+func clickLoginTarget(ctx context.Context, target string) error {
+	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	defer cancel()
+	return chromedp.Run(ctx, chromedp.Click(target, chromedp.ByJSPath))
 }
