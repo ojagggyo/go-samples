@@ -87,6 +87,8 @@ ID欄は `input[name='username']` または `input#username` で検索します�
 
 ## ビルド
 
+通信調査だけを行う場合は `aeon-billing.exe -auth-only -network-log network.jsonl` を実行します。請求取得・カレンダー登録は行いません。通信ログにはHTTP(S)のURL（クエリ・フラグメント除外）、メソッド、ステータス、リダイレクト先、User-Agentを記録します。本文・Cookie・認証ヘッダーは記録しません。ログは指定ファイルを毎回上書きします。
+
 実行環境でビルド：
 
 ```bash

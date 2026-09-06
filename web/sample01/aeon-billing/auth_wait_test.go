@@ -2,9 +2,13 @@ package main
 
 import (
 	"context"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/chromedp/chromedp"
 )
 
 func TestWaitForAuthentication(t *testing.T) {
@@ -46,5 +50,33 @@ func TestWaitForAuthentication(t *testing.T) {
 				t.Fatalf("expected %q, got %v", tc.wantError, err)
 			}
 		})
+	}
+}
+
+func TestAuthenticationBrowserSurvivesLoginTimeoutContext(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		_, _ = w.Write([]byte("<body>ご本人さま確認 ワンタイムパスワード</body>"))
+	}))
+	defer server.Close()
+	ctx, cancel := chromedp.NewContext(context.Background())
+	defer cancel()
+	ctx, timeout := context.WithTimeout(ctx, 60*time.Second)
+	defer timeout()
+	if err := chromedp.Run(ctx); err != nil {
+		t.Fatal(err)
+	}
+	loginCtx, stopLogin := context.WithTimeout(ctx, 10*time.Second)
+	if err := chromedp.Run(loginCtx, chromedp.Navigate(server.URL)); err != nil {
+		stopLogin()
+		t.Fatal(err)
+	}
+	stopLogin()
+	// Simulate completion in the same browser after the login task has ended.
+	if err := chromedp.Run(ctx, chromedp.Evaluate(`setTimeout(() => { document.body.innerText = 'マイページ ログアウト'; }, 1500)`, nil)); err != nil {
+		t.Fatal(err)
+	}
+	if err := waitForLoginCompletion(ctx, Config{BillingURL: server.URL}); err != nil {
+		t.Fatal(err)
 	}
 }

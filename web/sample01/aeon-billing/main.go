@@ -46,6 +46,8 @@ func main() {
 	outputPath := flag.String("output", "result.json", "JSON出力先")
 	noCalendar := flag.Bool("no-calendar", false, "Googleカレンダーへ登録せずJSONだけ出力")
 	debug := flag.Bool("debug", false, "画面本文を標準出力へ表示")
+	networkLog := flag.String("network-log", "", "機密値を除いた通信ログの出力先（JSON Lines）")
+	authOnly := flag.Bool("auth-only", false, "ログイン確認までで終了し、請求取得とカレンダー登録を行わない")
 	flag.Parse()
 
 	cfg, err := loadConfig(*configPath)
@@ -67,6 +69,19 @@ func main() {
 	defer cancelAlloc()
 	ctx, cancelBrowser := chromedp.NewContext(allocCtx)
 	defer cancelBrowser()
+	// Start Chrome on the session context so ending an operation timeout does
+	// not close the browser while the user is completing email verification.
+	if err := chromedp.Run(ctx); err != nil {
+		log.Fatalf("Chromeを起動できません: %v", err)
+	}
+	if *networkLog != "" {
+		closeTrace, err := startNetworkTrace(ctx, *networkLog)
+		if err != nil {
+			log.Fatalf("通信ログを開始できません: %v", err)
+		}
+		defer closeTrace()
+		log.Printf("通信ログ: %s（クエリ値・本文・Cookieは記録しません）", *networkLog)
+	}
 	timeout := time.Duration(cfg.TimeoutSeconds) * time.Second
 	loginCtx, cancelLogin := context.WithTimeout(ctx, timeout)
 	defer cancelLogin()
@@ -88,6 +103,9 @@ func main() {
 	if err := waitForLoginCompletion(ctx, cfg); err != nil {
 		saveScreenshot(ctx, "error.png")
 		log.Fatalf("ログインを完了できません: %v", err)
+	}
+	if *authOnly {
+		return
 	}
 
 	billingCtx, cancelBilling := context.WithTimeout(ctx, timeout)
