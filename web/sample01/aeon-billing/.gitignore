@@ -5,3 +5,20 @@ client_secret.json
 gitignore.*
 start.bat
 auth-post-body.jsonl
+
+# 認証情報・個別設定
+client_secret.json
+config.json
+token.json
+credentials.json
+
+# 認証・通信ログ
+auth-*.jsonl
+*.trace
+*.log
+
+# エラー確認用画像
+error.png
+
+# 実行ファイル
+*.exe

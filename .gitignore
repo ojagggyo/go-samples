@@ -49,7 +49,7 @@ decrypt
 backup
 
 private/*
-aeon-billing/*
+/**/aeon-billing/
 
 /decrypt/*
 /dockerhub/*
