@@ -53,9 +53,11 @@ private/*
 /decrypt/*
 /dockerhub/*
 /witness/*
+/gmail/*
 !/decrypt/
 !/dockerhub/
 !/witness/
+!/gmail/
 
 !bat
 !sql

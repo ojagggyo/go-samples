@@ -1,0 +1,6 @@
+.env
+client_secret.json
+token.json
+
+ffmpeg/ffmpeg.exe
+ffmpeg-master-latest-win64-gpl

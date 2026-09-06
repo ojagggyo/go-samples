@@ -3,3 +3,6 @@ token.json
 client_secret_*.json
 client_secret.json
 gitignore.*
+
+ffmpeg-master-latest-win64-gpl/
+ffmpeg/
