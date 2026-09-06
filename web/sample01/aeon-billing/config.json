@@ -1,0 +1,25 @@
+{
+  "login_url": "https://www.aeon.co.jp/app/",
+  "billing_url": "https://www.aeon.co.jp/app/statement/",
+  "headless": false,
+  "timeout_seconds": 120,
+  "google_credentials_file": "client_secret.json",
+  "google_token_file": "token.json",
+  "google_calendar_id": "primary",
+  "username_selectors": [
+    "input[name='loginId']",
+    "input[name='userId']",
+    "input[autocomplete='username']",
+    "input[type='email']",
+    "input[type='text']"
+  ],
+  "password_selectors": [
+    "input[name='password']",
+    "input[autocomplete='current-password']",
+    "input[type='password']"
+  ],
+  "submit_selectors": [
+    "button[type='submit']",
+    "input[type='submit']"
+  ]
+}

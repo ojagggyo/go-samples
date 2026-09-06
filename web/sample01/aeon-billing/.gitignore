@@ -1,0 +1,6 @@
+#credentials.json
+token.json
+#client_secret_*.json
+client_secret.json
+gitignore.*
+start.bat
