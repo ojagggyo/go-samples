@@ -48,6 +48,7 @@ func main() {
 	debug := flag.Bool("debug", false, "画面本文を標準出力へ表示")
 	networkLog := flag.String("network-log", "", "機密値を除いた通信ログの出力先（JSON Lines）")
 	authOnly := flag.Bool("auth-only", false, "ログイン確認までで終了し、請求取得とカレンダー登録を行わない")
+	authBodyLog := flag.String("auth-body-log", "", "認証POSTのbodyをそのまま保存するローカル調査用ログ")
 	flag.Parse()
 
 	cfg, err := loadConfig(*configPath)
@@ -81,6 +82,14 @@ func main() {
 		}
 		defer closeTrace()
 		log.Printf("通信ログ: %s（クエリ値・本文・Cookieは記録しません）", *networkLog)
+	}
+	if *authBodyLog != "" {
+		closeBody, err := startAuthBodyTrace(ctx, *authBodyLog, cfg.LoginURL)
+		if err != nil {
+			log.Fatalf("認証bodyログを開始できません: %v", err)
+		}
+		defer closeBody()
+		log.Printf("認証POST bodyログ: %s", *authBodyLog)
 	}
 	timeout := time.Duration(cfg.TimeoutSeconds) * time.Second
 	loginCtx, cancelLogin := context.WithTimeout(ctx, timeout)
