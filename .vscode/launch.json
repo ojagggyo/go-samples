@@ -136,5 +136,13 @@
             ],
             "envFile": "${workspaceFolder}/web/sample01/aeon-billing/.env"
         },
+        {
+            "name": "kakao",
+            "type": "go",
+            "request": "launch",
+            "mode": "debug",
+            "program": "${workspaceFolder}/kakao/sample01/kakao-send",
+            "envFile": "${workspaceFolder}/kakao/sample01/kakao-send/.env"
+        },
     ]
 }

@@ -1,2 +1,5 @@
 kakao_token.json
 kakao-send.exe
+
+.env
+start.bat

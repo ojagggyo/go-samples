@@ -92,7 +92,7 @@ func login(clientID, clientSecret string) (token, error) {
 	state := hex.EncodeToString(stateBytes)
 	authURL := "https://kauth.kakao.com/oauth/authorize?" + url.Values{
 		"client_id":     {clientID},
-		"redirect_uri": {redirectURI},
+		"redirect_uri":  {redirectURI},
 		"response_type": {"code"},
 		"scope":         {"talk_message"},
 		"state":         {state},
@@ -146,10 +146,10 @@ func login(clientID, clientSecret string) (token, error) {
 	defer cancel()
 	_ = server.Shutdown(ctx)
 	return requestToken(url.Values{
-		"grant_type":    {"authorization_code"},
-		"client_id":     {clientID},
+		"grant_type":   {"authorization_code"},
+		"client_id":    {clientID},
 		"redirect_uri": {redirectURI},
-		"code":          {code},
+		"code":         {code},
 	}, clientSecret)
 }
 
