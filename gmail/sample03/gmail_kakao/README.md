@@ -1,0 +1,44 @@
+# Gmail → Kakao ワンタイムコード転送
+
+指定送信元のメール本文からコードを取り出し、本人のカカオトーク「自分とのトーク」へ送信します。独立した Go モジュールです。イオンの送信元 `thanks@aeon.co.jp`、件名「ワンタイムパスワードのご案内」を設定済みです。提供された本文形式（`ワンタイムパスワード：　 123456`、有効期限10分）を架空のコードでテストしています。実メールでの取得・転送は未検証です。
+
+## 設定
+
+1. このディレクトリで `Copy-Item config.example.json config.json` を実行します。
+2. `senders` に実際の送信元アドレスを設定します。表示名ではなく完全一致で判定します。
+3. Gmail API を有効化したデスクトップアプリ用 OAuth JSON を `client_secret.json` に配置します。`gmail_credentials` と `gmail_token` には既存 gmail_calendar のファイルへの相対パスも指定できます。Google の権限は読み取りのみです。
+4. Kakao Developers でカカオログインを有効にし、Redirect URI `http://localhost:8080/oauth/callback` と同意項目 `talk_message` を設定します。
+5. Kakao の Product Link の Web ドメインに `https://mail.google.com` を登録します。別の登録済みドメインを使う場合は `kakao_link` も変更します。
+6. `.env.example` を `.env` にコピーし、`KAKAO_REST_API_KEY`、必要なら `KAKAO_CLIENT_SECRET` を記入します。起動時に作業ディレクトリの `.env` を自動で読み込みます。`.env` は Git 管理対象外です。
+
+```dotenv
+KAKAO_REST_API_KEY=REST APIキー
+KAKAO_CLIENT_SECRET=Client Secret
+```
+
+値は引用符なし、または一重・二重引用符で記述できます。空行と `#` コメントに対応します。変数展開や複数行の値は扱いません。既にOS・PowerShellに同名の環境変数がある場合はそちらを優先します。
+
+```powershell
+go run .                 # 1回確認。転送せず、コード本体も表示しません
+go run . -send           # 1回確認して転送
+go run . -send -watch    # 15秒ごとに確認して転送。Ctrl+Cで終了
+```
+
+初回の認証は表示された URL をブラウザで開いて行います。Google と Kakao のトークンは別々に保存し、更新されたトークンも保存します。Kakao のトークン形式はこのプロジェクト専用で、既存 kakao-send のトークンを直接コピーしないでください。
+
+## 動作
+
+- 初回も含め、受信から `max_age_seconds`（既定600秒）以内のメールだけ対象です。コード自体の有効期限を判定する機能ではありません。
+- 既読・未読の両方を確認し、メールの既読状態やラベルは変更しません。
+- 既定の `code_pattern` は「認証コード」「ワンタイムパスワード」「verification code」などの直後にある4〜8桁の数字に対応します。全角数字は半角に変換し、先頭の0を保持します。
+- 書式が異なる場合は Go の正規表現で `code_pattern` を変更します。コード部分を取り出すキャプチャグループは1つだけ指定します。複数の異なるコードが見つかったメールは転送しません。
+- 送信内容はコードと送信元のみです。本文全体・コードをログや状態ファイルに保存しません。
+- `state.json` にメールIDと送信状態を保存します。送信前に `pending`、成功後に `sent` を記録します。
+- 通信切断などで送信結果が不明な場合は自動再送しません。Kakaoで未着を確認したうえで、該当IDの `pending` エントリを削除すると再試行できます（受信からの時間制限は適用）。
+- 多重実行は `gmail_kakao.lock` で防止します。強制終了後にロックが残った場合は、他の実行がないことを確認して削除します。
+- API通信は30秒、1回の巡回は60秒でタイムアウトし、エラー時は終了します。
+- 添付ファイルや外部格納された本文は未対応です。常駐サービスやタスクスケジューラの登録は行いません。
+
+`go test ./...` で抽出・重複防止・送信APIのモックテストを実行します。
+
+公式仕様: [自分への送信](https://developers.kakao.com/docs/en/kakaotalk-message/rest-api)、[テキストテンプレートと登録ドメイン](https://developers.kakao.com/docs/en/message-template/default)

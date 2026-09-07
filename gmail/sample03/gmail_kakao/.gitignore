@@ -1,0 +1,8 @@
+client_secret*.json
+token*.json
+kakao_token.json
+config.json
+state.json*
+*.lock
+*.exe
+.env
