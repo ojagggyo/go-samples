@@ -76,10 +76,16 @@ func run(ctx context.Context, path string, send, watch bool) error {
 	if err != nil || pattern.NumSubexp() != 1 {
 		return fmt.Errorf("code_pattern はコードだけを取り出すキャプチャグループを1つ指定してください")
 	}
+	templateID := strings.TrimSpace(os.Getenv("KAKAO_TEMPLATE_ID"))
 	if send {
-		u, err := url.Parse(cfg.KakaoLink)
-		if err != nil || u.Scheme != "https" || u.Host == "" || cfg.KakaoToken == "" || os.Getenv("KAKAO_REST_API_KEY") == "" {
-			return fmt.Errorf("KAKAO_REST_API_KEY、kakao_token、httpsのkakao_link を設定してください")
+		if cfg.KakaoToken == "" || os.Getenv("KAKAO_REST_API_KEY") == "" {
+			return fmt.Errorf("KAKAO_REST_API_KEY、kakao_token を設定してください")
+		}
+		if templateID == "" {
+			u, err := url.Parse(cfg.KakaoLink)
+			if err != nil || u.Scheme != "https" || u.Host == "" {
+				return fmt.Errorf("httpsのkakao_link を設定してください")
+			}
 		}
 	}
 	lock, err := os.OpenFile("gmail_kakao.lock", os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)
@@ -120,7 +126,7 @@ func run(ctx context.Context, path string, send, watch bool) error {
 		}
 		kc.Timeout = 30 * time.Second
 		deliver = func(ctx context.Context, text string) error {
-			return sendToMe(ctx, kc, "https://kapi.kakao.com/v2/api/talk/memo/default/send", cfg.KakaoLink, text)
+			return sendKakaoCode(ctx, kc, "https://kapi.kakao.com", cfg.KakaoLink, templateID, text)
 		}
 	}
 	for {
@@ -196,11 +202,7 @@ func scan(ctx context.Context, gs *gmail.Service, cfg Config, allow map[string]b
 			fmt.Printf("転送候補: %s / コード%d文字 / message=%s\n", addr.Address, len([]rune(code)), msg.Id)
 			continue
 		}
-		text := "認証コード: " + code + "\n送信元: " + addr.Address
-		if len([]rune(text)) > 200 {
-			return fmt.Errorf("Kakaoメッセージが200文字を超えています")
-		}
-		if err := forwardOnce(ctx, "state.json", state, msg.Id, text, deliver); err != nil {
+		if err := forwardOnce(ctx, "state.json", state, msg.Id, code, deliver); err != nil {
 			return err
 		}
 		fmt.Printf("転送しました: message=%s\n", msg.Id)

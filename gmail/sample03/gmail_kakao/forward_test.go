@@ -123,13 +123,16 @@ func TestScanFiltersAndOrdering(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if len(delivered) != 2 || !strings.Contains(delivered[0], "111111") || !strings.Contains(delivered[1], "222222") {
+	if len(delivered) != 2 || delivered[0] != "111111" || delivered[1] != "222222" {
 		t.Fatal("wrong delivery order or filtering")
 	}
 }
 
 func TestKakaoRequest(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v2/api/talk/memo/default/send" {
+			t.Error("unexpected default endpoint")
+		}
 		if r.Method != "POST" {
 			t.Error(r.Method)
 		}
@@ -140,14 +143,14 @@ func TestKakaoRequest(t *testing.T) {
 		if err := json.Unmarshal([]byte(r.Form.Get("template_object")), &template); err != nil {
 			t.Error(err)
 		}
-		if template["object_type"] != "text" || template["text"] != "認証コード: 123456" {
+		if template["object_type"] != "text" || template["text"] != "123456" {
 			t.Error("unexpected template")
 		}
 		w.Header().Set("Content-Type", "application/json")
 		w.Write([]byte(`{"result_code":0}`))
 	}))
 	defer server.Close()
-	if err := sendToMe(context.Background(), server.Client(), server.URL, "https://mail.google.com", "認証コード: 123456"); err != nil {
+	if err := sendKakaoCode(context.Background(), server.Client(), server.URL, "https://mail.google.com", "", "123456"); err != nil {
 		t.Fatal(err)
 	}
 }

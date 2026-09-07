@@ -78,6 +78,13 @@ func forwardOnce(ctx context.Context, path string, state map[string]string, id, 
 	return writeJSON(path, state)
 }
 
+func sendKakaoCode(ctx context.Context, client *http.Client, baseURL, link, templateID, code string) error {
+	if templateID != "" {
+		return sendCustomToMe(ctx, client, baseURL+"/v2/api/talk/memo/send", templateID, code)
+	}
+	return sendToMe(ctx, client, baseURL+"/v2/api/talk/memo/default/send", link, code)
+}
+
 func sendToMe(ctx context.Context, client *http.Client, endpoint, link, text string) error {
 	template := map[string]any{"object_type": "text", "text": text, "link": map[string]string{"web_url": link, "mobile_web_url": link}, "button_title": "メールを開く"}
 	b, err := json.Marshal(template)
@@ -85,6 +92,18 @@ func sendToMe(ctx context.Context, client *http.Client, endpoint, link, text str
 		return err
 	}
 	form := url.Values{"template_object": {string(b)}}
+	return postKakao(ctx, client, endpoint, form)
+}
+
+func sendCustomToMe(ctx context.Context, client *http.Client, endpoint, id, code string) error {
+	args, err := json.Marshal(map[string]string{"CODE": code})
+	if err != nil {
+		return err
+	}
+	return postKakao(ctx, client, endpoint, url.Values{"template_id": {id}, "template_args": {string(args)}})
+}
+
+func postKakao(ctx context.Context, client *http.Client, endpoint string, form url.Values) error {
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, strings.NewReader(form.Encode()))
 	if err != nil {
 		return err
