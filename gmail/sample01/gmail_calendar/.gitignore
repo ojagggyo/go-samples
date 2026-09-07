@@ -1,0 +1,7 @@
+#credentials.json
+token.json
+token_*.json
+config.json
+#client_secret_*.json
+client_secret.json
+gitignore.*

@@ -1,0 +1,8 @@
+{
+  "calendar_id": "primary",
+  "query": "label:請求 newer_than:90d",
+  "senders": {
+    "セゾン": ["namr@mail.saisoncard.co.jp"],
+    "楽天": ["info@mail.rakuten-card.co.jp"]
+  }
+}
