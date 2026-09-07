@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 
+	"golang.org/x/text/encoding/japanese"
 	"google.golang.org/api/gmail/v1"
 )
 
@@ -71,6 +72,55 @@ func TestProvidedMailSamples(t *testing.T) {
 				}
 			})
 		}
+	}
+}
+
+func TestBracketedMIMEPayment(t *testing.T) {
+	cases := []struct{ company, body, charset, date, amount string }{
+		{"セゾン", "【対象カード】\r\nセゾンカードインターナショナル\r\n【お支払日】\r\n2026年9月4日(金)\r\n【口座へのご準備期日】\r\n2026年9月3日(木)\r\n【お支払金額】\r\n70円\r\n※お支払金額の変更(まとめてリボ)は2026年8月24日(月)20:00までにお願いします。", "utf-8", "2026-09-04", "70"},
+		{"楽天", "[ご利用カード]\r\n楽天PINKカード(Visa)\r\n[お支払い日]\r\n2026/08/27\r\n[お支払い金額]\r\n0円", "iso-2022-jp", "2026-08-27", "0"},
+	}
+	for _, c := range cases {
+		t.Run(c.company, func(t *testing.T) {
+			data := []byte(c.body)
+			if c.charset == "iso-2022-jp" {
+				var err error
+				data, err = japanese.ISO2022JP.NewEncoder().Bytes(data)
+				if err != nil {
+					t.Fatal(err)
+				}
+			}
+			plain := textPart("text/plain", string(data))
+			plain.Headers = []*gmail.MessagePartHeader{{Name: "Content-Type", Value: "text/plain; charset=" + c.charset}}
+			part := &gmail.MessagePart{MimeType: "multipart/alternative", Parts: []*gmail.MessagePart{plain, textPart("text/html", "<p>別表現</p>")}}
+			body, err := messageText(part)
+			if err != nil {
+				t.Fatal(err)
+			}
+			p, err := parsePayment(c.company, body)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if p.Date.Format("2006-01-02") != c.date || p.Amount != c.amount {
+				t.Fatalf("unexpected payment: %+v", p)
+			}
+		})
+	}
+}
+
+func TestUTF8BodyWithLegacyCharsetHeader(t *testing.T) {
+	part := textPart("text/plain", "[お支払い日]\r\n2026/08/27\r\n[お支払い金額]\r\n0円(税込)")
+	part.Headers = []*gmail.MessagePartHeader{{Name: "Content-Type", Value: `text/plain; charset="iso-2022-jp"`}}
+	body, err := messageText(part)
+	if err != nil {
+		t.Fatal(err)
+	}
+	p, err := parsePayment("楽天", body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p.Date.Format("2006-01-02") != "2026-08-27" || p.Amount != "0" {
+		t.Fatalf("unexpected payment: %+v", p)
 	}
 }
 

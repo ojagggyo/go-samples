@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"golang.org/x/net/html"
 	"golang.org/x/net/html/charset"
@@ -24,8 +25,8 @@ type Payment struct {
 }
 
 // Only accept values directly following payment-specific labels.
-var dateRE = regexp.MustCompile(`(?:お支払日|お支払い日|支払日|支払い日|口座振替日|お引落日|お引き落とし日|引落日)[\s:：]*([0-9]{4})[年/\-]([0-9]{1,2})[月/\-]([0-9]{1,2})(?:日|\b)`)
-var amountRE = regexp.MustCompile(`(?:お支払金額|お支払い金額|ご請求金額|請求金額|お引落金額|お引き落とし金額|ご請求額)[\s:：]*[¥￥]?[\s]*([0-9][0-9,]*)\s*円`)
+var dateRE = regexp.MustCompile(`(?:お支払日|お支払い日|支払日|支払い日|口座振替日|お引落日|お引き落とし日|引落日)[\s:：\]】]*([0-9]{4})[年/\-]([0-9]{1,2})[月/\-]([0-9]{1,2})(?:日|\b)`)
+var amountRE = regexp.MustCompile(`(?:お支払金額|お支払い金額|ご請求金額|請求金額|お引落金額|お引き落とし金額|ご請求額)[\s:：\]】]*[¥￥]?[\s]*([0-9][0-9,]*)\s*円`)
 var yenRE = regexp.MustCompile(`^(?:[0-9]+|[0-9]{1,3}(?:,[0-9]{3})+)$`)
 
 // Rakuten places a confirmation label between the monthly heading and amount.
@@ -119,7 +120,10 @@ func messageText(part *gmail.MessagePart) (string, error) {
 		return "", err
 	}
 	text := string(b)
-	if enc := params["charset"]; enc != "" {
+	// Gmail can return UTF-8 body bytes while retaining the original legacy charset header.
+	// ISO-2022-JP is ASCII bytes with escape sequences, so UTF-8 validity alone is insufficient.
+	utf8Body := utf8.Valid(b) && strings.IndexFunc(text, func(r rune) bool { return r > 127 }) >= 0
+	if enc := params["charset"]; enc != "" && !utf8Body {
 		reader, err := charset.NewReaderLabel(enc, strings.NewReader(text))
 		if err != nil {
 			return "", err
