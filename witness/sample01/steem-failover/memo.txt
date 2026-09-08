@@ -1,0 +1,2 @@
+cd D:\GitHub\go-samples\witness\sample01\steem-failover
+go build .
