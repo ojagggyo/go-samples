@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="ja">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+
+  <title>Witness History</title>
+
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+  <style>
+    body {
+      margin: 0;
+      font-family: Meiryo, sans-serif;
+      background: #f5f6f8;
+    }
+
+    #title {
+      padding: 12px 18px;
+      background: white;
+      border-bottom: 1px solid #ddd;
+      font-size: 18px;
+      font-weight: bold;
+    }
+
+
+    #back-button {
+      margin: 8px 18px 0;
+      padding: 5px 14px;
+      cursor: pointer;
+    }
+
+    #periods {
+      padding: 8px 18px;
+      background: white;
+      border-bottom: 1px solid #ddd;
+    }
+
+    #periods button {
+      margin-right: 6px;
+      padding: 4px 12px;
+      cursor: pointer;
+    }
+
+    #periods button.active {
+      font-weight: bold;
+    }
+
+    #chart-area {
+      position: relative;
+      height: calc(100vh - 60px);
+      min-height: 420px;
+      background: white;
+    }
+
+    #message {
+      padding: 20px;
+    }
+  
+    /* 詳細画面上部をランキング画面と同様に固定 */
+    #detail-header {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      z-index: 1000;
+      background: white;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15);
+    }
+
+    #detail-content {
+      /* 固定ヘッダーとグラフを重ねない */
+      padding-top: 120px;
+    }
+
+  </style>
+</head>
+
+<body>
+
+  <div id="detail-header">
+<div id="title">
+    Witness History
+  </div>
+
+
+  <button id="back-button" onclick="goBackToRanking()">ランキングに戻る</button>
+
+  <div id="periods">
+    <button data-span="hour">1時間</button>
+    <button data-span="day">1日</button>
+    <button data-span="week">1週間</button>
+    <button data-span="month">1ヶ月</button>
+    <button data-span="year">1年</button>
+  </div>
+</div>
+
+  <div id="detail-content">
+<div id="chart-area">
+    <canvas id="historyChart"></canvas>
+  </div>
+
+  <script src="./detail.js?v=20260902-1455"></script>
+
+
+</div>
+</body>
+
+</html>

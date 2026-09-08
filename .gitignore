@@ -1,0 +1,100 @@
+# If you prefer the allow list template instead of the deny list, see community template:
+# https://github.com/github/gitignore/blob/main/community/Golang/Go.AllowList.gitignore
+#
+# Binaries for programs and plugins
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Test binary, built with `go test -c`
+*.test
+
+# Code coverage profiles and other test artifacts
+*.out
+coverage.*
+*.coverprofile
+profile.cov
+
+# Dependency directories (remove the comment below to include it)
+# vendor/
+
+# Go workspace file
+go.work
+go.work.sum
+
+# env file
+.env
+
+# Editor/IDE
+# .idea/
+# .vscode/
+
+
+# ALL
+.env
+token.json
+token_gmail.json
+client_secret*.json
+client_secret_916983816489-ikj17pqr0e3p5pooh4uimks33m7cfolj.apps.googleusercontent.com.json
+token.json
+.recovery-20260908/
+.recovery-20260908-2100/
+
+# bat
+bat/**/rename_mp3.exe
+bat/**/old/
+
+# covid19
+covid19/**/scripts/covid19
+covid19/**/scripts/*.exe
+covid19/**/new/
+covid19/**/org/
+covid19/**/covid19/covid19
+covid19/**/covid19/*.exe
+
+# decrypt
+decrypt/sample03/*.exe
+decrypt/sample03/wallet*.json
+decrypt/sample04/*.exe
+decrypt/sample04/wallet*.json
+#!decrypt/sample04/wallet.sample.json
+!*.sample.*
+
+# dockerhub
+dockerhub/**/old/
+dockerhub/**/sample01/
+private.md
+
+# gmail
+!config.json
+kakao_token.json
+state.json
+token_gmail.json
+token_calendar.json
+token_readonly.json
+
+# kakao
+
+# sql
+sql/**/old/
+sql/**/sample01/*.exe
+
+# web
+web/**/*.exe
+
+# witness
+witness/**/steem-failover/steem-failover.exe
+witness/**/steem-failover/steem-failover
+witness/**/backup/
+witness/**/new/
+witness/**/old/
+witness/**/data
+
+# youtube 
+youtube/**/.lib
+youtube/**/downloads/
+youtube/**/ffmpeg-master-latest-win64-gpl/
+youtube/**/ffmpeg
+

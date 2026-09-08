@@ -1,0 +1,11 @@
+{
+  "gmail_credentials": "client_secret.json",
+  "gmail_token": "token_gmail.json",
+  "kakao_token": "kakao_token.json",
+  "kakao_link": "https://mail.google.com",
+  "query": "from:thanks@aeon.co.jp subject:\"ワンタイムパスワードのご案内\" newer_than:1d",
+  "max_age_seconds": 600,
+  "poll_seconds": 15,
+  "senders": ["thanks@aeon.co.jp"],
+  "code_pattern": "(?i)(?:ワンタイム(?:パスワード|コード)|認証コード|確認コード|verification code|one[- ]time (?:password|code)|OTP)[\\s:：\\]】]*([0-9]{4,8})(?:[^0-9A-Za-z]|$)"
+}

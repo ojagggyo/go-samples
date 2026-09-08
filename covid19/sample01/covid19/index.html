@@ -1,0 +1,149 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.0.0"></script>
+<script src="./csvread.js"></script>
+<script>
+function makeChart(json){
+
+  console.log(json.csv.length);
+
+  const borderColor  =['rgb(234, 67, 53)', 'rgb(51, 123, 243)', 'rgb(250, 181, 0)',]
+  const datalabel  =[
+            {anchor: 'end',align: 'end',formatter: function (value, context) {
+if(json.csv.length - 1 > 12){
+  if(context.dataIndex % 4 != 0){
+    return '';
+  }
+  return value;
+}
+},color: borderColor[0]},
+            {anchor: 'end',align: 'end',formatter: function (value, context) {
+if(json.csv.length - 1 > 12){
+  if(context.dataIndex % 4 != 0){
+    return '';
+  }
+  return value;
+}
+},color: borderColor[1]},
+            {formatter: function (value, context) {return ''}}
+  ];
+
+  let title = json.csv.slice(0,1)[0].slice(1);
+  let labels = [];
+  let datasets =[];
+  var datas = [[],[],[]];
+
+  json.csv.slice(1).forEach(function(elem, index) {
+      labels.push(elem[0]);
+      datas[0].push(elem[1]);
+      datas[1].push(elem[2]);
+      datas[2].push(elem[3]);
+  });
+
+  for(var i=0;i<3;i++){
+    datasets.push(
+          {
+            label: title[i],
+            borderColor: borderColor[i],
+            backgroundColor: borderColor[i],
+            borderWidth: 1,
+            data: datas[i],
+            tension: 0.2,
+            datalabels: datalabel[i]
+          },
+    );
+  }
+
+  const config = {
+    type: 'line',
+    data: {
+      labels: labels,
+      datasets: datasets,
+    },
+    options: {
+        scales: {
+          y: { min: 0 },
+          x: {
+            ticks: {
+              maxTicksLimit: (json.csv.length-1)>12?parseInt((json.csv.length-1)/4)+1:json.csv.length,
+              callback: function(value, index, ticks) {
+                if(index == 0){
+                  return this.chart.data.labels[index];
+                }
+                if (this.chart.data.labels[index].substring(0,4) == this.chart.data.labels[index - 1].substring(0,4)) {
+                  return this.chart.data.labels[index].substring(5);
+                }
+                else{
+                  return this.chart.data.labels[index];
+                }
+              },
+            },
+          },
+        },
+    },
+    plugins: [myPlugin]
+  };
+
+  Chart.register(ChartDataLabels);
+
+  const canvas = document.getElementById('myChart');
+  const oldChart = Chart.getChart(canvas);
+
+  if (oldChart) {
+    oldChart.destroy();
+  }
+
+  new Chart(canvas, config);
+}
+
+const myPlugin = {
+  id: 'myCustomPlugin',
+  afterDraw(chart, args, options) {
+    console.log("afterDraw");
+  }
+};
+
+window.onload = function() {
+  const url = new URL(window.location.href);
+  const week = url.searchParams.get('week') ?? "12";
+
+  document.querySelectorAll("#periodButtons button").forEach(function(button) {
+    if (button.dataset.week === week) {
+      button.style.fontWeight = "bold";
+    }
+
+    button.addEventListener("click", function() {
+      const selectedWeek = this.dataset.week;
+
+      document.querySelectorAll("#periodButtons button").forEach(function(btn) {
+        btn.style.fontWeight = "normal";
+      });
+      this.style.fontWeight = "bold";
+
+      const newUrl = new URL(window.location.href);
+      newUrl.searchParams.set("week", selectedWeek);
+      window.history.replaceState({}, "", newUrl);
+
+      csvread("covid19", selectedWeek, 1);
+    });
+  });
+
+  csvread("covid19", week, 1);
+}
+</script>
+</head>
+<body>
+<div id="periodButtons" style="margin-bottom: 12px;">
+  <button type="button" data-week="4">1か月</button>
+  <button type="button" data-week="12">3か月</button>
+  <button type="button" data-week="26">6か月</button>
+  <button type="button" data-week="52">1年</button>
+  <button type="button" data-week="104">2年</button>
+  <button type="button" data-week="0">全期間</button>
+</div>
+<div><canvas id="myChart"></canvas></div>
+</body>
+</html>
