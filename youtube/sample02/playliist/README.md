@@ -15,7 +15,7 @@ YouTube Data API v3 で、自分のアカウントにプレイリストを作り
 依存関係を取得してから実行します。
 
 ```powershell
-cd youtube/sample02
+cd youtube/sample02/playliist
 go mod tidy
 go run . -client-id "Google Cloud でコピーしたクライアント ID" -title "お気に入り" -privacy private -urls-file urls.example.txt
 ```
@@ -28,7 +28,7 @@ go run . -client-id "Google Cloud でコピーしたクライアント ID" -titl
   -url "https://www.youtube.com/watch?v=9bZkp7q19f0"
 ```
 
-初回はブラウザーで Google 認可を行います。認可トークンは `token.json` に保存され、次回以降は再利用されます。作成されるプレイリストは既定で `private` です。`-privacy unlisted` または `-privacy public` で変更できます。旧 UI などで JSON を取得済みの場合は、`credentials.json` を置けば `-client-id` は不要です。
+初回はブラウザーで Google 認可を行います。認可トークンは `token.json` に保存され、次回以降は再利用されます。作成されるプレイリストは既定で `private` です。`-privacy unlisted` または `-privacy public` で変更できます。JSON を取得済みの場合は、実行フォルダに `client_secret.json` を置けば `-client-id` は不要です。別のファイルを使う場合は `-credentials` で指定できます。
 
 ## 確認
 

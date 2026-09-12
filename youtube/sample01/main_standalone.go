@@ -26,19 +26,15 @@ import (
 func main() {
 
 	urls := []string{
-		"https://youtu.be/FjKQDfFPsZU?si=QrRCkkD8iiaxvpuD",
-		"https://youtu.be/baS4JsU6gkk?si=yDk4jThqicMyNppA",
-		"https://youtu.be/0-1rdQXHadw?si=EsA-DMs2efDFsBuv",
-		"https://youtu.be/VNT6VNG_5Y8?si=Bn6rVlexQKapMITr",
-		"https://youtu.be/VezhR47IwXI?si=hn6BhI4dBmW6oZhI",
-		"https://youtu.be/1gU67kB-y_E?si=ewz7NcVu2G5Eq-yY",
-		"https://youtu.be/v9jKpQzwGtY?si=PCHgku18OsOJ-FVn",
-		"https://youtu.be/tiKFuzpX-NA?si=QS9OCQMIE9gNGyAw",
-		"https://youtu.be/A_Gk12ny9NA?si=FA6TzayeL-7T6Rjn",
-		"https://www.youtube.com/watch?v=1wZUdgHYs34",
-		"https://youtu.be/yTzyJ7kDLL4?si=bkrxp53VdcGA38z5",
-		"https://youtu.be/ohWU8j_2iEg?si=9cDqZKhStXWvcvz9",
-		"https://youtu.be/Zi_XLOBDo_Y?si=eScNoumN9Q1_ymLv",
+		"https://youtu.be/W3hsaxdnwRM?si=brkJhPH12TE2js_J",
+		"https://youtu.be/NUNJZOyqYPM?si=B-I5-KmzIZkJF88R",
+		"https://youtu.be/9bxc9hbwkkw?si=aWEdRQAmRFePByFI",
+		"https://youtu.be/IDqrxpUg4IM?si=8U68E5yMpRjEGeIX",
+		"https://youtu.be/GQZepNyky6E?si=HG91i4Zwi-h1wZb5",
+		"https://youtu.be/8lFHn8YQPO4?si=EfIM6OeBNjTlI7Er",
+		"https://youtu.be/B_U8CtpBIyA?si=JrNQ8z6iAV9V8f7b",
+		"https://youtu.be/HdtzcDZt7Vg?si=rtpwmqxawmk5FxXV",
+		"https://youtu.be/xXzOGBVYNYE?si=d6KqSudiK79IDYV9",
 	}
 
 	args := []string{

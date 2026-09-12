@@ -1,4 +1,4 @@
-cd D:\GitHub\go-samples\youtube\sample01
+cd /d D:\GitHub\go-samples\youtube\sample01
 
 # Youtube動画から、プレイリストを取得する。
 go run getplaylist.go

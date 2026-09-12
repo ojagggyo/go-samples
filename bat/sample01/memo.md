@@ -1,3 +1,5 @@
+cd /d 
+
 ビルド
 go build -o rename_mp3.exe rename.go
 

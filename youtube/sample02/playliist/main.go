@@ -53,17 +53,18 @@ var videoIDPattern = regexp.MustCompile(`^[A-Za-z0-9_-]{11}$`)
 
 func main() {
 	var urls stringList
-	credentialsPath := flag.String("credentials", "credentials.json", "OAuth client JSON downloaded from Google Cloud (optional when -client-id is used)")
+	credentialsPath := flag.String("credentials", "client_secret.json", "OAuth client JSON downloaded from Google Cloud (optional when -client-id is used)")
 	clientID := flag.String("client-id", "", "OAuth desktop client ID copied from Google Cloud")
 	tokenPath := flag.String("token", "token.json", "path used to cache the OAuth token")
 	urlsFile := flag.String("urls-file", "", "text file containing one YouTube URL per line")
 	title := flag.String("title", "", "playlist title (required)")
 	description := flag.String("description", "", "playlist description")
 	privacy := flag.String("privacy", "private", "private, unlisted, or public")
+	existingPlaylist := flag.String("playlist-id", "", "resume an existing playlist, skipping videos already present")
 	flag.Var(&urls, "url", "YouTube video URL; repeat this flag for multiple URLs")
 	flag.Parse()
 
-	if *title == "" || (*privacy != "private" && *privacy != "unlisted" && *privacy != "public") {
+	if (*title == "" && *existingPlaylist == "") || (*privacy != "private" && *privacy != "unlisted" && *privacy != "public") {
 		flag.Usage()
 		os.Exit(2)
 	}
@@ -93,15 +94,31 @@ func main() {
 		fatal(err)
 	}
 
-	playlistID, err := createPlaylist(ctx, client, *title, *description, *privacy)
-	if err != nil {
-		fatal(err)
+	client.Timeout = 60 * time.Second
+	playlistID := *existingPlaylist
+	present := make(map[string]bool)
+	if playlistID == "" {
+		playlistID, err = createPlaylist(ctx, client, *title, *description, *privacy)
+		if err != nil {
+			fatal(err)
+		}
+		fmt.Printf("Created playlist: https://www.youtube.com/playlist?list=%s\n", playlistID)
+	} else {
+		present, err = playlistVideos(ctx, client, playlistID, "")
+		if err != nil {
+			fatal(fmt.Errorf("read existing playlist: %w", err))
+		}
+		fmt.Printf("Resuming playlist: https://www.youtube.com/playlist?list=%s\n", playlistID)
 	}
-	fmt.Printf("Created playlist: https://www.youtube.com/playlist?list=%s\n", playlistID)
 
 	for i, videoID := range videoIDs {
-		if err := addVideo(ctx, client, playlistID, videoID); err != nil {
-			fatal(fmt.Errorf("playlist was created (%s), but adding item %d (%s) failed: %w", playlistID, i+1, videoID, err))
+		if present[videoID] {
+			fmt.Printf("Skipped %d/%d (already present): %s\n", i+1, len(videoIDs), videoID)
+			continue
+		}
+		if err := addVideoWithRetry(ctx, client, playlistID, videoID, waitRetry); err != nil {
+			fmt.Fprintf(os.Stderr, "Resume with the same URL input and -playlist-id %q\n", playlistID)
+			fatal(fmt.Errorf("playlist (%s), adding item %d (%s) failed: %w", playlistID, i+1, videoID, err))
 		}
 		fmt.Printf("Added %d/%d: https://www.youtube.com/watch?v=%s\n", i+1, len(videoIDs), videoID)
 	}
@@ -288,7 +305,11 @@ func youtubePost(ctx context.Context, client *http.Client, endpoint string, body
 	if err != nil {
 		return err
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, strings.NewReader(string(b)))
+	return youtubeRequest(ctx, client, http.MethodPost, endpoint, string(b), result)
+}
+
+func youtubeRequest(ctx context.Context, client *http.Client, method, endpoint, body string, result any) error {
+	req, err := http.NewRequestWithContext(ctx, method, endpoint, strings.NewReader(body))
 	if err != nil {
 		return err
 	}
@@ -303,7 +324,7 @@ func youtubePost(ctx context.Context, client *http.Client, endpoint string, body
 		return err
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return fmt.Errorf("YouTube API returned %s: %s", resp.Status, strings.TrimSpace(string(responseBody)))
+		return &youtubeAPIError{Code: resp.StatusCode, Body: string(responseBody)}
 	}
 	if result != nil {
 		return json.Unmarshal(responseBody, result)
