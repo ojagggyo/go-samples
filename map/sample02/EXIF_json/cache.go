@@ -7,9 +7,10 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"strconv"
 )
 
-const cacheVersion = 1
+const cacheVersion = 2
 
 type cachedLocation struct {
 	Size    int64
@@ -19,6 +20,7 @@ type cachedLocation struct {
 	Lat     float64
 	Lng     float64
 	OK      bool
+	TakenAt int64
 }
 
 type cacheFile struct {
@@ -89,6 +91,7 @@ func (c *metadataCache) read(path string, isJSON bool) cachedLocation {
 		if json.Unmarshal(data, &metadata) == nil {
 			location, ok := takeoutCoordinates(metadata)
 			entry.Title, entry.Lat, entry.Lng, entry.OK = metadata.Title, location.lat, location.lng, ok
+			entry.TakenAt, _ = strconv.ParseInt(metadata.PhotoTakenTime.Timestamp, 10, 64)
 		}
 	} else {
 		entry.Lat, entry.Lng, entry.OK, err = locationFromEXIF(path)

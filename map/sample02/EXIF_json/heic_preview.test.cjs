@@ -5,6 +5,70 @@ const vm = require('node:vm');
 const source = fs.readFileSync(__dirname + '/main.0.4.0.go', 'utf8');
 const script = source.slice(source.indexOf('let heicLibrary;'), source.indexOf('async function refresh()'));
 
+test('complete page JavaScript parses', () => {
+  new vm.Script(source.slice(source.lastIndexOf('<script>') + '<script>'.length, source.lastIndexOf('</script>')));
+});
+
+test('multiple selections retain adjusted coordinates across pages and save together', async () => {
+  const elements = new Map();
+  const get = id => {
+    if (!elements.has(id)) elements.set(id, { value: 'unlocated', scrollIntoView() {} });
+    return elements.get(id);
+  };
+  const requests = [];
+  const moves = [];
+  const mapEvents = {};
+  const context = vm.createContext({
+    document: { getElementById: get },
+    map: { on(event, handler) { mapEvents[event] = handler; }, removeLayer() {}, setView(...args) { moves.push(args); } },
+    L: { divIcon: x => x, marker: () => ({ addTo() { return this; }, on() {}, setLatLng() {}, dragging: { disable() {}, enable() {} } }) },
+    fetch: async (url, options) => { requests.push({url, options}); return {ok:true}; },
+    requestNo: 0,
+  });
+  vm.runInContext(source.slice(source.indexOf('let unlocatedOffset ='), source.indexOf("map.on('moveend', refresh)")), context);
+  context.loadUnlocated = async () => {};
+  mapEvents.click({latlng:{lat:38.9088661,lng:140.8097197}});
+  assert.equal(get('coordinate-input').value, '38.9088661,140.8097197');
+  assert.equal(requests.length, 0);
+  context.selectUnlocatedPhoto({ id: -1, name: 'photo.jpg', suggestion: {name:'nearby.jpg',lat:35,lng:139,differenceSeconds:300} });
+  assert.equal(requests.length, 0);
+  get('use-suggestion').onclick();
+  assert.equal(get('coordinate-input').value, '35,139');
+  assert.equal(requests.length, 0);
+  const submitCoordinates = value => {
+    get('coordinate-input').value = value;
+    get('coordinate-form').onsubmit({ preventDefault() {} });
+  };
+  const beforeInvalid = moves.length;
+  for (const invalid of ['91,140', '38,181', ',140', 'NaN,140', '38,140,1', '38']) submitCoordinates(invalid);
+  assert.equal(moves.length, beforeInvalid);
+  submitCoordinates(' 38.9088661,140.8097197 ');
+  assert.deepEqual(Array.from(moves.at(-1)[0]), [38.9088661,140.8097197]);
+  assert.equal(requests.length, 0);
+  vm.runInContext("unlocatedPage = [{id:-2,name:'second.jpg'}, {id:-3,name:'third.jpg'}]", context);
+  get('select-page').onclick();
+  assert.equal(get('selection-count').textContent, '3枚選択');
+  context.selectUnlocatedPhoto({id:-3,name:'third.jpg'});
+  assert.equal(get('selection-count').textContent, '2枚選択');
+  vm.runInContext('unlocatedOffset = 30', context);
+  get('filter-year').value = 'unknown';
+  get('filter-month').value = '12';
+  get('filter-year').onchange();
+  assert.equal(get('filter-month').value, '');
+  assert.equal(get('filter-month').disabled, true);
+  assert.equal(vm.runInContext('unlocatedOffset', context), 0);
+  assert.equal(get('selection-count').textContent, '2枚選択');
+  await get('save-location').onclick();
+  assert.equal(requests.length, 1);
+  assert.equal(requests[0].url, '/api/location');
+  assert.deepEqual(JSON.parse(requests[0].options.body), {ids:[-1,-2],lat:38.9088661,lng:140.8097197});
+  assert.match(get('location-result').textContent, /保存しました/);
+  assert.equal(get('selection-count').textContent, '0枚選択');
+  submitCoordinates('35，139');
+  assert.deepEqual(Array.from(moves.at(-1)[0]), [35,139]);
+  assert.equal(requests.length, 1);
+});
+
 function setup(convert, input = new Blob(['heic test data'])) {
   let fetches = 0;
   const revoked = [];

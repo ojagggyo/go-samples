@@ -20,14 +20,15 @@ import (
 )
 
 type Media struct {
-	ID     int     `json:"id"`
-	Name   string  `json:"name"`
-	Lat    float64 `json:"lat"`
-	Lng    float64 `json:"lng"`
-	Format string  `json:"format"`
-	Type   string  `json:"type"`   // photo / video
-	Source string  `json:"source"` // exif / json
-	path   string
+	ID      int     `json:"id"`
+	Name    string  `json:"name"`
+	Lat     float64 `json:"lat"`
+	Lng     float64 `json:"lng"`
+	Format  string  `json:"format"`
+	Type    string  `json:"type"`   // photo / video
+	Source  string  `json:"source"` // exif / json
+	TakenAt int64   `json:"takenAt,omitempty"`
+	path    string
 }
 
 type FolderCount struct {
@@ -41,14 +42,18 @@ type FolderCount struct {
 var (
 	mediaLimit   = 100
 	media        []Media
+	unlocated    []Media
 	folderCounts = make(map[string]*FolderCount)
 	mu           sync.RWMutex
 )
 
 type TakeoutJSON struct {
-	Title       string          `json:"title"`
-	GeoDataExif TakeoutLocation `json:"geoDataExif"`
-	GeoData     TakeoutLocation `json:"geoData"`
+	Title          string          `json:"title"`
+	GeoDataExif    TakeoutLocation `json:"geoDataExif"`
+	GeoData        TakeoutLocation `json:"geoData"`
+	PhotoTakenTime struct {
+		Timestamp string `json:"timestamp"`
+	} `json:"photoTakenTime"`
 }
 
 type TakeoutLocation struct {
@@ -73,14 +78,16 @@ func (f *FlexibleFloat) UnmarshalJSON(data []byte) error {
 }
 
 type coordinates struct {
-	lat float64
-	lng float64
+	lat     float64
+	lng     float64
+	takenAt int64
 }
 
 func main() {
 	dir := flag.String("photos", "./photos", "Google Photos/Takeout を展開したフォルダ")
 	addr := flag.String("addr", "127.0.0.1:8080", "待受アドレス")
 	rebuildCache := flag.Bool("rebuild-cache", false, "保存済みキャッシュを使わず位置情報を再解析")
+	locationsPath := flag.String("locations", "photo-locations.json", "手動で紐づけた位置情報の保存先")
 	flag.IntVar(&mediaLimit, "limit", 100, "地図に表示する最大件数（1以上）")
 	flag.Parse()
 	if mediaLimit < 1 {
@@ -99,6 +106,9 @@ func main() {
 	if err := scanMedia(abs, cache); err != nil {
 		log.Fatal(err)
 	}
+	if err := loadLocationAssignments(*locationsPath, abs); err != nil {
+		log.Fatal(err)
+	}
 	progress.setPhase("キャッシュを保存中")
 	if err := cache.save(); err != nil {
 		log.Printf("キャッシュを保存できません: %v", err)
@@ -113,6 +123,8 @@ func main() {
 	http.HandleFunc("/api/media", mediaHandler)
 	http.HandleFunc("/photo", mediaFileHandler) // 旧URL互換
 	http.HandleFunc("/media", mediaFileHandler)
+	http.HandleFunc("/api/unlocated", unlocatedHandler)
+	http.HandleFunc("/api/location", assignLocationHandler)
 
 	photoCount, videoCount, jsonCount := totalCounts()
 	log.Printf("位置情報付き写真: %d枚", photoCount)
@@ -133,6 +145,7 @@ func scanMedia(root string, cache *metadataCache) error {
 	}
 	mu.Lock()
 	media = nil
+	unlocated = nil
 	folderCounts = make(map[string]*FolderCount)
 	mu.Unlock()
 	// Google Takeout の JSON を先にすべて読み込む。
@@ -174,12 +187,9 @@ func scanMedia(root string, cache *metadataCache) error {
 			}
 		}
 
+		key := mediaKey(filepath.Dir(path), filepath.Base(path))
+		c := jsonLocations[key]
 		if !ok {
-			key := mediaKey(filepath.Dir(path), filepath.Base(path))
-			c, found := jsonLocations[key]
-			if !found {
-				return nil
-			}
 			lat, lng = c.lat, c.lng
 			ok = validLocation(lat, lng)
 			if ok {
@@ -187,21 +197,26 @@ func scanMedia(root string, cache *metadataCache) error {
 			}
 		}
 
-		if !ok || !validLocation(lat, lng) {
-			return nil
-		}
-
 		item := Media{
-			Name:   filepath.Base(path),
-			Lat:    lat,
-			Lng:    lng,
-			Format: strings.TrimPrefix(ext, "."),
-			Type:   mediaType,
-			Source: source,
-			path:   path,
+			Name:    filepath.Base(path),
+			Lat:     lat,
+			Lng:     lng,
+			Format:  strings.TrimPrefix(ext, "."),
+			Type:    mediaType,
+			Source:  source,
+			path:    path,
+			TakenAt: c.takenAt,
 		}
 
 		mu.Lock()
+		if !ok || !validLocation(lat, lng) {
+			if mediaType == "photo" {
+				item.ID = -len(unlocated) - 1
+				unlocated = append(unlocated, item)
+			}
+			mu.Unlock()
+			return nil
+		}
 		item.ID = len(media)
 		media = append(media, item)
 		countMedia(filepath.Dir(path), item)
@@ -327,10 +342,10 @@ func loadTakeoutLocations(root string, cache *metadataCache) (map[string]coordin
 
 		defer cache.progress.advance()
 		entry := cache.read(path, true)
-		if !entry.OK {
+		if !entry.OK && entry.TakenAt == 0 {
 			return nil
 		}
-		c := coordinates{lat: entry.Lat, lng: entry.Lng}
+		c := coordinates{lat: entry.Lat, lng: entry.Lng, takenAt: entry.TakenAt}
 
 		dir := filepath.Dir(path)
 
@@ -489,12 +504,17 @@ func mediaFileHandler(w http.ResponseWriter, r *http.Request) {
 	mu.RLock()
 	defer mu.RUnlock()
 
-	if err != nil || id < 0 || id >= len(media) {
+	if err != nil || (id >= 0 && id >= len(media)) || (id < 0 && (id < -len(unlocated))) {
 		http.NotFound(w, r)
 		return
 	}
 
-	p := media[id]
+	var p Media
+	if id < 0 {
+		p = unlocated[-id-1]
+	} else {
+		p = media[id]
+	}
 	switch strings.ToLower(filepath.Ext(p.path)) {
 	case ".heic":
 		w.Header().Set("Content-Type", "image/heic")
@@ -536,9 +556,19 @@ const indexHTML = `<!doctype html>
     .card img { cursor: pointer; }
     .heic-thumbnail { display: block; width: 100%; height: 130px; padding: 0; border: 0; background: #eee; cursor: pointer; }
     .card figcaption { padding: 5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; }
-    .popup { width: 220px; max-height: 170px; object-fit: cover; }
+    .popup { width: 220px; max-height: 170px; object-fit: cover; cursor: zoom-in; }
+    #photo-viewer { max-width: 96vw; max-height: 96vh; padding: 12px; border: 0; border-radius: 8px; background: #202124; color: white; }
+    #photo-viewer::backdrop { background: rgba(0,0,0,.8); }
+    #photo-viewer img { display: block; max-width: 90vw; max-height: 80vh; object-fit: contain; margin: auto; }
+    #photo-viewer-caption { overflow-wrap: anywhere; margin: 8px 0; }
+    #photo-viewer-close { display: block; margin: 0 0 8px auto; cursor: pointer; }
     .popup-video { width: 240px; max-height: 180px; background: #111; }
     .media-note { padding: 12px; font-size: 12px; background: white; }
+    #location-editor { margin: 10px 0; padding: 10px; background: #fff; border: 2px solid #1769aa; }
+    #location-editor p { overflow-wrap: anywhere; margin: 8px 0; }
+    .location-select { width: 100%; padding: 8px; cursor: pointer; }
+    #side button { cursor: pointer; }
+    #side button:disabled { cursor: default; }
     @media (max-width: 800px) {
       main { grid-template-columns: 1fr; grid-template-rows: 55% 45%; }
     }
@@ -549,10 +579,40 @@ const indexHTML = `<!doctype html>
 <main>
   <div id="map"></div>
   <aside id="side">
+    <form id="coordinate-form">
+      <label for="coordinate-input">緯度・経度</label>
+      <input id="coordinate-input" type="text" placeholder="38.9088661,140.8097197" style="width:100%;margin:4px 0" autocomplete="off">
+      <button type="submit">この位置へ移動</button>
+      <p id="coordinate-result" role="status"></p>
+    </form>
+    <label>表示 <select id="view-mode"><option value="map">地図の写真・動画</option><option value="unlocated">位置情報のない写真</option></select></label>
+    <div id="selection-tools" hidden><button id="select-page" type="button">このページをすべて選択</button> <button id="clear-selection" type="button">すべて解除</button> <span id="selection-count">0枚選択</span></div>
+    <div id="date-filters" hidden>
+      <label>撮影年 <select id="filter-year"><option value="">すべての年</option><option value="unknown">撮影日時なし</option></select></label>
+      <label>月 <select id="filter-month"><option value="">すべての月</option><option value="1">1月</option><option value="2">2月</option><option value="3">3月</option><option value="4">4月</option><option value="5">5月</option><option value="6">6月</option><option value="7">7月</option><option value="8">8月</option><option value="9">9月</option><option value="10">10月</option><option value="11">11月</option><option value="12">12月</option></select></label>
+      <small>撮影日時は日本時間。絞り込み前の選択も保持します。</small>
+    </div>
+    <section id="location-editor" hidden>
+      <strong>選択した写真に同じ場所を紐づける</strong>
+      <p id="selected-photo"></p>
+      <p>地図をクリックして場所を指定してください。青い丸はドラッグで調整できます。</p>
+      <p id="location-suggestion"></p>
+      <button id="use-suggestion" type="button" hidden>候補の場所を地図で確認</button>
+      <p id="selected-coordinates">場所が未指定です</p>
+      <button id="save-location" type="button" disabled>選択した写真にこの場所を保存</button>
+      <button id="cancel-location" type="button">選択を解除</button>
+    </section>
+    <p id="location-result" role="status"></p>
     <p id="status" role="status" aria-live="polite" aria-busy="true">データを読み込み中…</p>
     <div id="photos"></div>
+    <div id="unlocated-pages" hidden><button id="previous-page" type="button">前へ</button> <span id="page-info"></span> <button id="next-page" type="button">次へ</button></div>
   </aside>
 </main>
+<dialog id="photo-viewer" aria-label="写真を拡大表示">
+  <button id="photo-viewer-close" type="button" autofocus>閉じる ×</button>
+  <img id="photo-viewer-image" alt="">
+  <p id="photo-viewer-caption"></p>
+</dialog>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
 const map = L.map('map').setView([38.2682, 140.8694], 8);
@@ -567,6 +627,22 @@ let visibleMediaIDs = new Set();
 let requestNo = 0;
 
 let heicLibrary;
+let enlargedPhotoURL;
+function closeEnlargedPhoto() {
+  document.getElementById('photo-viewer-image').removeAttribute('src');
+  if (enlargedPhotoURL) URL.revokeObjectURL(enlargedPhotoURL);
+  enlargedPhotoURL = undefined;
+}
+function enlargePhoto(src, name, blob) {
+  closeEnlargedPhoto();
+  const img = document.getElementById('photo-viewer-image');
+  if (blob) enlargedPhotoURL = URL.createObjectURL(blob);
+  img.src = enlargedPhotoURL || src;
+  img.alt = name;
+  img.onerror = () => { document.getElementById('photo-viewer-caption').textContent = '画像を表示できません: ' + name; };
+  document.getElementById('photo-viewer-caption').textContent = name;
+  document.getElementById('photo-viewer').showModal();
+}
 let heicQueue = Promise.resolve();
 const heicPreviews = new Map();
 
@@ -635,6 +711,8 @@ function bindHeicPopup(marker, p, src) {
       const img = document.createElement('img');
       img.className = 'popup';
       img.alt = p.name;
+      img.title = 'クリックで拡大';
+      img.onclick = () => enlargePhoto(src, p.name, blob);
       img.onload = () => marker.getPopup().update();
       img.onerror = () => { content.textContent = '画像を表示できません: ' + p.name; release(); };
       img.src = objectURL;
@@ -718,6 +796,7 @@ function reconcileMarkers(items) {
 }
 
 async function refresh() {
+  if (document.getElementById('view-mode').value !== 'map') return;
   const myRequest = ++requestNo;
   const status = document.getElementById('status');
   status.textContent = '地図の範囲のデータを読み込み中…';
@@ -772,8 +851,22 @@ async function refresh() {
     if (!marker) {
       marker = L.marker([p.lat, p.lng]).addTo(layer);
       markers.set(p.id, marker);
+      marker.on('click', () => {
+        const position = marker.getLatLng();
+        pickLocation(position.lat, position.lng);
+      });
       if (isHEIC) bindHeicPopup(marker, p, src);
-      else marker.bindPopup(popupHTML);
+      else {
+        marker.bindPopup(popupHTML);
+        if (!isVideo) marker.on('popupopen', () => {
+          const img = marker.getPopup().getElement().querySelector('img.popup');
+          if (img) {
+            img.alt = p.name;
+            img.title = 'クリックで拡大';
+            img.onclick = () => enlargePhoto(src, p.name);
+          }
+        });
+      }
       marker.on('popupclose', () => {
         if (!visibleMediaIDs.has(p.id)) {
           markers.delete(p.id);
@@ -781,6 +874,7 @@ async function refresh() {
         }
       });
     }
+    marker.setLatLng([p.lat, p.lng]);
     const fig = document.createElement('figure');
     fig.className = 'card';
 
@@ -826,7 +920,200 @@ function escapeHTML(s) {
   return e.innerHTML;
 }
 
+let unlocatedOffset = 0;
+let selectedPhoto;
+const selectedPhotos = new Map();
+let unlocatedPage = [];
+const selectionCheckboxes = new Map();
+let pickedLocation;
+let pickedMarker;
+let savingLocation = false;
+function clearLocationSelection() {
+  selectedPhotos.clear();
+  selectedPhoto = undefined;
+  pickedLocation = undefined;
+  if (pickedMarker) map.removeLayer(pickedMarker);
+  pickedMarker = undefined;
+  document.getElementById('location-editor').hidden = true;
+  syncPhotoSelection();
+}
+function syncPhotoSelection() {
+  for (const [id, checkbox] of selectionCheckboxes) {
+    checkbox.checked = selectedPhotos.has(id);
+    checkbox.disabled = savingLocation;
+  }
+  document.getElementById('selection-count').textContent = selectedPhotos.size + '枚選択';
+  document.getElementById('select-page').disabled = savingLocation;
+  document.getElementById('clear-selection').disabled = savingLocation;
+}
+function pickLocation(lat, lng) {
+  if (savingLocation) return;
+  if (lng < -180 || lng > 180) lng = ((lng + 180) % 360 + 360) % 360 - 180;
+  document.getElementById('coordinate-input').value = lat + ',' + lng;
+  document.getElementById('coordinate-result').textContent = '';
+  if (!selectedPhoto) return;
+  pickedLocation = { lat, lng };
+  if (!pickedMarker) {
+    pickedMarker = L.marker([lat, lng], { draggable: true, icon: L.divIcon({ html: '<div style="width:20px;height:20px;border:3px solid white;border-radius:50%;background:#1769aa;box-shadow:0 0 4px #333"></div>', className: '', iconSize: [20,20], iconAnchor: [10,10] }) }).addTo(map);
+    pickedMarker.on('dragend', () => { const p = pickedMarker.getLatLng(); pickLocation(p.lat, p.lng); });
+    pickedMarker.on('click', () => { const p = pickedMarker.getLatLng(); pickLocation(p.lat, p.lng); });
+  } else pickedMarker.setLatLng([lat, lng]);
+  document.getElementById('selected-coordinates').textContent = '緯度 ' + lat.toFixed(6) + ' / 経度 ' + lng.toFixed(6);
+  document.getElementById('save-location').disabled = false;
+  document.getElementById('location-result').textContent = '';
+}
+function selectUnlocatedPhoto(p, checked = !selectedPhotos.has(p.id)) {
+  if (savingLocation) return;
+  if (checked) selectedPhotos.set(p.id, p); else selectedPhotos.delete(p.id);
+  syncPhotoSelection();
+  if (!selectedPhotos.size) { clearLocationSelection(); return; }
+  selectedPhoto = selectedPhotos.values().next().value;
+  p = selectedPhoto;
+  document.getElementById('location-editor').hidden = false;
+  document.getElementById('selected-photo').textContent = selectedPhotos.size + '枚選択（別ページ・絞り込み外の選択を含む）。候補の基準: ' + p.name + (p.takenAt ? ' / ' + new Date(p.takenAt * 1000).toLocaleString() : ' / 撮影日時なし');
+  if (!pickedLocation) document.getElementById('selected-coordinates').textContent = '場所が未指定です';
+  document.getElementById('save-location').disabled = !pickedLocation;
+  document.getElementById('location-result').textContent = '';
+  const suggestion = p.suggestion;
+  document.getElementById('location-suggestion').textContent = suggestion
+    ? '候補: ' + suggestion.name + '（撮影時刻の差 ' + Math.round(suggestion.differenceSeconds / 60) + '分）。同じ場所とは限らないため地図で確認してください。'
+    : '撮影日時が前後1時間以内の位置情報付き写真は見つかりません。日時はTakeout JSONを使用します。';
+  const use = document.getElementById('use-suggestion');
+  use.hidden = !suggestion;
+  use.onclick = () => {
+    pickLocation(suggestion.lat, suggestion.lng);
+    map.setView([suggestion.lat, suggestion.lng], 15);
+  };
+}
+async function loadUnlocated() {
+  const current = ++requestNo;
+  const status = document.getElementById('status');
+  status.textContent = '位置情報のない写真を読み込み中…';
+  status.setAttribute('aria-busy', 'true');
+  try {
+    const query = new URLSearchParams({ offset: unlocatedOffset, year: document.getElementById('filter-year').value, month: document.getElementById('filter-month').value });
+    const response = await fetch('/api/unlocated?' + query);
+    if (!response.ok) throw new Error('一覧を読み込めません');
+    const data = await response.json();
+    if (current !== requestNo) return;
+    const yearSelect = document.getElementById('filter-year');
+    const selectedYear = yearSelect.value;
+    const years = new Set(data.years);
+    if (selectedYear && selectedYear !== 'unknown') years.add(Number(selectedYear));
+    yearSelect.replaceChildren();
+    for (const [value, text] of [['', 'すべての年'], ...Array.from(years).sort((a,b) => b-a).map(year => [String(year), year + '年']), ['unknown', '撮影日時なし']]) {
+      const option = document.createElement('option'); option.value = value; option.textContent = text; yearSelect.append(option);
+    }
+    yearSelect.value = selectedYear;
+    unlocatedOffset = data.offset;
+    unlocatedPage = data.items;
+    selectionCheckboxes.clear();
+    thumbnailCleanups.splice(0).forEach(cleanup => cleanup());
+    const box = document.getElementById('photos');
+    box.replaceChildren();
+    for (const p of data.items) {
+      const fig = document.createElement('figure'); fig.className = 'card';
+      const src = '/media?id=' + p.id;
+      if (p.format === 'heic' || p.format === 'heif') fig.append(heicThumbnail(p, src, () => selectUnlocatedPhoto(p)));
+      else {
+        const img = document.createElement('img'); img.loading = 'lazy'; img.src = src; img.alt = p.name;
+        img.onclick = () => selectUnlocatedPhoto(p); fig.append(img);
+      }
+      const caption = document.createElement('figcaption'); caption.textContent = p.name; caption.title = p.name; fig.append(caption);
+      const date = document.createElement('div'); date.textContent = p.takenAt ? new Date(p.takenAt * 1000).toLocaleDateString('ja-JP', {timeZone:'Asia/Tokyo'}) : '撮影日時なし'; fig.append(date);
+      const label = document.createElement('label'); label.className = 'location-select';
+      const checkbox = document.createElement('input'); checkbox.type = 'checkbox';
+      checkbox.checked = selectedPhotos.has(p.id); checkbox.disabled = savingLocation;
+      checkbox.onchange = () => selectUnlocatedPhoto(p, checkbox.checked);
+      selectionCheckboxes.set(p.id, checkbox);
+      label.append(checkbox, document.createTextNode('この写真を選択')); fig.append(label);
+      box.append(fig);
+    }
+    status.textContent = '位置情報のない写真 ' + data.total + '枚';
+    document.getElementById('previous-page').disabled = unlocatedOffset === 0;
+    document.getElementById('next-page').disabled = unlocatedOffset + data.items.length >= data.total;
+    document.getElementById('page-info').textContent = data.total ? (unlocatedOffset + 1) + '–' + (unlocatedOffset + data.items.length) + ' / ' + data.total : '0枚';
+  } catch (error) { if (current === requestNo) status.textContent = '一覧の読み込みに失敗しました。表示を切り替えて再試行してください。'; }
+  finally { if (current === requestNo) status.setAttribute('aria-busy', 'false'); }
+}
+document.getElementById('coordinate-form').onsubmit = event => {
+  event.preventDefault();
+  const result = document.getElementById('coordinate-result');
+  if (savingLocation) { result.textContent = '保存が終わってから移動してください。'; return; }
+  const parts = document.getElementById('coordinate-input').value.trim().replace(/，/g, ',').split(',');
+  const decimal = /^[+-]?(?:\d+(?:\.\d*)?|\.\d+)$/;
+  if (parts.length !== 2 || !parts.every(part => decimal.test(part.trim()))) {
+    result.textContent = '緯度,経度の順で入力してください（例: 38.9088661,140.8097197）。'; return;
+  }
+  const [lat, lng] = parts.map(Number);
+  if (!Number.isFinite(lat) || !Number.isFinite(lng) || lat < -90 || lat > 90 || lng < -180 || lng > 180) {
+    result.textContent = '緯度は-90〜90、経度は-180〜180で入力してください。'; return;
+  }
+  pickLocation(lat, lng);
+  map.setView([lat, lng], 15);
+  result.textContent = selectedPhotos.size
+    ? '指定位置へ移動しました。選択した写真への紐づけは保存ボタンで確定します。'
+    : '指定位置へ移動しました。';
+};
+document.getElementById('view-mode').onchange = () => {
+  ++requestNo;
+  clearLocationSelection();
+  const editing = document.getElementById('view-mode').value === 'unlocated';
+  document.getElementById('unlocated-pages').hidden = !editing;
+  document.getElementById('selection-tools').hidden = !editing;
+  document.getElementById('date-filters').hidden = !editing;
+  if (editing) { unlocatedOffset = 0; loadUnlocated(); } else refresh();
+};
+document.getElementById('previous-page').onclick = () => { unlocatedOffset = Math.max(0, unlocatedOffset - 30); loadUnlocated(); };
+function changeDateFilter() {
+  const unknown = document.getElementById('filter-year').value === 'unknown';
+  const month = document.getElementById('filter-month');
+  month.disabled = unknown;
+  if (unknown) month.value = '';
+  unlocatedOffset = 0;
+  loadUnlocated();
+}
+document.getElementById('filter-year').onchange = changeDateFilter;
+document.getElementById('filter-month').onchange = changeDateFilter;
+document.getElementById('next-page').onclick = () => { unlocatedOffset += 30; loadUnlocated(); };
+document.getElementById('cancel-location').onclick = clearLocationSelection;
+document.getElementById('clear-selection').onclick = clearLocationSelection;
+document.getElementById('select-page').onclick = () => {
+  if (savingLocation) return;
+  for (const p of unlocatedPage) selectedPhotos.set(p.id, p);
+  if (unlocatedPage.length) selectUnlocatedPhoto(unlocatedPage[0], true);
+};
+map.on('click', e => pickLocation(e.latlng.lat, e.latlng.lng));
+document.getElementById('save-location').onclick = async () => {
+  if (!selectedPhoto || !pickedLocation || savingLocation) return;
+  savingLocation = true;
+  syncPhotoSelection();
+  const ids = Array.from(selectedPhotos.keys());
+  const button = document.getElementById('save-location'); button.disabled = true;
+  document.getElementById('cancel-location').disabled = true;
+  document.getElementById('view-mode').disabled = true;
+  if (pickedMarker) pickedMarker.dragging.disable();
+  try {
+    const response = await fetch('/api/location', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ids, ...pickedLocation }) });
+    if (!response.ok) throw new Error(await response.text());
+    clearLocationSelection();
+    document.getElementById('location-result').textContent = ids.length + '枚の位置情報を保存しました。地図の写真・動画に切り替えると反映されます。';
+    await loadUnlocated();
+  } catch (error) { document.getElementById('location-result').textContent = '保存に失敗しました: ' + error.message; }
+  finally {
+    savingLocation = false; button.disabled = !pickedLocation || !selectedPhotos.size;
+    syncPhotoSelection();
+    document.getElementById('cancel-location').disabled = false;
+    document.getElementById('view-mode').disabled = false;
+    if (pickedMarker) pickedMarker.dragging.enable();
+  }
+};
+
 map.on('moveend', refresh);
+const photoViewer = document.getElementById('photo-viewer');
+document.getElementById('photo-viewer-close').onclick = () => photoViewer.close();
+photoViewer.addEventListener('close', closeEnlargedPhoto);
+photoViewer.addEventListener('click', event => { if (event.target === photoViewer) photoViewer.close(); });
 refresh();
 </script>
 </body>

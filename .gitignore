@@ -40,6 +40,7 @@ client_secret*.json
 client_secret_916983816489-ikj17pqr0e3p5pooh4uimks33m7cfolj.apps.googleusercontent.com.json
 token.json
 .recovery-*/
+old/
 
 # bat
 bat/**/rename_mp3.exe
