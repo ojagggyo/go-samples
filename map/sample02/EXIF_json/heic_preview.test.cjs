@@ -5,7 +5,7 @@ const vm = require('node:vm');
 const source = fs.readFileSync(__dirname + '/main.0.4.0.go', 'utf8');
 const script = source.slice(source.indexOf('let heicLibrary;'), source.indexOf('async function refresh()'));
 
-function setup(convert) {
+function setup(convert, input = new Blob(['heic test data'])) {
   let fetches = 0;
   const revoked = [];
   const element = () => ({ children: [], replaceChildren(...children) { this.children = children; } });
@@ -15,13 +15,48 @@ function setup(convert) {
     layer: { removeLayer() {} },
     window: { HeicTo: convert },
     document: { createElement: element, head: { append(script) { script.onload(); } } },
-    fetch: async () => { fetches++; return { ok: true, blob: async () => ({}) }; },
+    fetch: async () => { fetches++; return { ok: true, blob: async () => input }; },
     URL: { createObjectURL: () => 'blob:preview', revokeObjectURL: url => revoked.push(url) },
     console: { error() {} },
   });
   vm.runInContext(script, context);
   return { context, revoked, fetches: () => fetches };
 }
+
+test('JPEG and PNG with HEIC extensions display without loading the converter', async () => {
+  for (const [type, bytes] of [
+    ['image/jpeg', [255, 216, 255, 224, 0, 16]],
+    ['image/png', [137, 80, 78, 71, 13, 10, 26, 10]],
+  ]) {
+    const input = new Blob([new Uint8Array(bytes)], { type: 'image/heic' });
+    const state = setup(() => { throw Error('converter must not run'); }, input);
+    state.context.document.head.append = () => { throw Error('library must not load'); };
+    const result = await state.context.heicPreview('/media?id=1');
+    assert.equal(result.type, type);
+    assert.deepEqual(await result.arrayBuffer(), await input.arrayBuffer());
+  }
+});
+
+test('sidebar thumbnails load when visible and release previews on cleanup', async () => {
+  const state = setup(async () => ({}));
+  let visible;
+  state.context.document.getElementById = () => ({});
+  state.context.IntersectionObserver = class {
+    constructor(callback) { visible = callback; }
+    observe() {}
+    disconnect() {}
+  };
+  let opened = 0;
+  const button = state.context.heicThumbnail({ name: 'photo.heic' }, '/media?id=1', () => opened++);
+  assert.equal(state.fetches(), 0);
+  visible([{ isIntersecting: true }]);
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(button.children[0].src, 'blob:preview');
+  button.onclick();
+  assert.equal(opened, 1);
+  vm.runInContext('thumbnailCleanups.splice(0).forEach(cleanup => cleanup())', state.context);
+  assert.deepEqual(state.revoked, ['blob:preview']);
+});
 
 test('map refresh preserves open previews even when sampling excludes them', () => {
   const { context } = setup(async () => ({}));

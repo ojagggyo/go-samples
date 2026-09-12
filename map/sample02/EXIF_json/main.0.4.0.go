@@ -534,6 +534,7 @@ const indexHTML = `<!doctype html>
     .card { margin: 0; background: white; border-radius: 6px; overflow: hidden; box-shadow: 0 1px 4px #bbb; }
     .card img, .card video { display: block; width: 100%; height: 130px; object-fit: cover; background: #111; }
     .card img { cursor: pointer; }
+    .heic-thumbnail { display: block; width: 100%; height: 130px; padding: 0; border: 0; background: #eee; cursor: pointer; }
     .card figcaption { padding: 5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; }
     .popup { width: 220px; max-height: 170px; object-fit: cover; }
     .popup-video { width: 240px; max-height: 180px; background: #111; }
@@ -592,10 +593,17 @@ function heicPreview(src) {
   }
   // 大きい画像の同時変換でメモリを使い切らないよう直列に処理する。
   const pending = heicQueue.then(async () => {
-    const convert = await loadHeicLibrary();
     const response = await fetch(src);
     if (!response.ok) throw new Error('画像を読み込めません');
-    return convert({ blob: await response.blob(), type: 'image/jpeg', quality: 0.8 });
+    const blob = await response.blob();
+    // Takeoutには拡張子がHEICでも中身がJPEG/PNGのファイルがある。
+    const header = new Uint8Array(await blob.slice(0, 12).arrayBuffer());
+    let type;
+    if (header[0] === 0xff && header[1] === 0xd8 && header[2] === 0xff) type = 'image/jpeg';
+    else if ([137, 80, 78, 71, 13, 10, 26, 10].every((byte, i) => header[i] === byte)) type = 'image/png';
+    if (type) return blob.slice(0, blob.size, type);
+    const convert = await loadHeicLibrary();
+    return convert({ blob, type: 'image/jpeg', quality: 0.8 });
   });
   heicQueue = pending.catch(() => {});
   heicPreviews.set(src, pending);
@@ -615,7 +623,7 @@ function bindHeicPopup(marker, p, src) {
     objectURL = undefined;
   };
   // 自動パンによるmoveendでマーカーが作り直されるのを避ける。
-  marker.bindPopup(content, { autoPan: false });
+  marker.bindPopup(content, { autoPan: false, minWidth: 220 });
   marker.on('popupopen', async () => {
     const current = ++generation;
     release();
@@ -637,10 +645,65 @@ function bindHeicPopup(marker, p, src) {
     } catch (error) {
       if (current !== generation || !marker.isPopupOpen()) return;
       content.textContent = 'HEIC画像を表示できません。再度クリックしてお試しください。';
+      marker.getPopup().update();
       console.error('HEIC preview:', error);
     }
   });
   marker.on('popupclose', () => { generation++; release(); });
+}
+
+const thumbnailCleanups = [];
+
+function heicThumbnail(p, src, open) {
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.className = 'heic-thumbnail';
+  button.textContent = '読み込み待ち…';
+  button.title = p.name;
+  let disposed = false;
+  let objectURL;
+  let loading = false;
+  let ready = false;
+  const release = () => {
+    if (objectURL) URL.revokeObjectURL(objectURL);
+    objectURL = undefined;
+  };
+  const load = async () => {
+    if (disposed || loading || ready) return;
+    loading = true;
+    button.textContent = '読み込み中…';
+    try {
+      const blob = await heicPreview(src);
+      if (disposed) return;
+      const img = document.createElement('img');
+      img.alt = p.name;
+      img.onload = release;
+      img.onerror = () => {
+        release();
+        ready = false;
+        button.textContent = '表示できません。クリックで再試行';
+      };
+      objectURL = URL.createObjectURL(blob);
+      img.src = objectURL;
+      button.replaceChildren(img);
+      ready = true;
+    } catch (error) {
+      if (!disposed) button.textContent = '表示できません。クリックで再試行';
+      console.error('HEIC thumbnail:', error);
+    } finally {
+      loading = false;
+    }
+  };
+  button.onclick = () => { if (ready) open(); else load(); };
+  const observer = new IntersectionObserver(entries => {
+    if (entries.some(entry => entry.isIntersecting)) {
+      observer.disconnect();
+      load();
+    }
+  }, { root: document.getElementById('side'), rootMargin: '100px' });
+  observer.observe(button);
+  thumbnailCleanups.push(() => { disposed = true; observer.disconnect(); release(); });
+  return button;
 }
 
 function reconcileMarkers(items) {
@@ -683,6 +746,7 @@ async function refresh() {
 
   reconcileMarkers(items);
   const box = document.getElementById('photos');
+  thumbnailCleanups.splice(0).forEach(cleanup => cleanup());
   box.replaceChildren();
 
   const photos = items.filter(p => p.type === 'photo').length;
@@ -727,12 +791,10 @@ async function refresh() {
       video.preload = 'metadata';
       fig.append(video);
     } else if (isHEIC) {
-      const button = document.createElement('button');
-      button.type = 'button';
-      button.className = 'media-note';
-      button.textContent = 'HEIC/HEIF画像を表示';
-      button.onclick = () => marker.openPopup();
-      fig.append(button);
+      fig.append(heicThumbnail(p, src, () => {
+        map.setView([p.lat, p.lng], Math.max(map.getZoom(), 15));
+        marker.openPopup();
+      }));
     } else {
       const img = document.createElement('img');
       img.src = src;

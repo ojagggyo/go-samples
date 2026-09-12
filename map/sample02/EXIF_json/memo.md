@@ -18,7 +18,8 @@ go run . -photos "D:\GooglePhotos\Takeout\Google フォト" -limit 500
 
 go run . -photos "D:\GooglePhotos\Takeout\Google フォト" -rebuild-cache
 
-HEIC/HEIFはマーカー、または一覧の「HEIC/HEIF画像を表示」をクリックするとプレビューします。
+HEIC/HEIFも右サイドの一覧で、画面に入った画像から自動でサムネイルを表示します。
+マーカーまたはサムネイルをクリックするとプレビューします。拡張子がHEICでも中身がJPEG/PNGなら変換せず表示します。
 ブラウザ内で表示用JPEGに変換し、元の写真は変更しません。直近12件はページ内で再利用します。
 初回表示時はCDNからheic-to 1.5.2を読み込むため、インターネット接続が必要です。
 変換できない画像や通信失敗時にはエラーを表示します。ページ更新でプレビューキャッシュは消えます。
