@@ -97,3 +97,5 @@ youtube/**/downloads/
 youtube/**/ffmpeg-master-latest-win64-gpl/
 youtube/**/ffmpeg
 
+# map
+map/**/old/
