@@ -50,11 +50,11 @@ func TestManualLocationPersistsWithoutChangingPhoto(t *testing.T) {
 		t.Fatalf("candidate: %+v", candidate)
 	}
 	listing := httptest.NewRecorder()
-	unlocatedHandler(listing, httptest.NewRequest("GET", "/api/unlocated", nil))
+	unlocatedHandler(listing, adminTestRequest("GET", "/api/unlocated", nil))
 	if !strings.Contains(listing.Body.String(), `"total":1`) || !strings.Contains(listing.Body.String(), `"suggestion"`) {
 		t.Fatal(listing.Body.String())
 	}
-	request := httptest.NewRequest("POST", "/api/location", strings.NewReader(`{"id":-1,"lat":36,"lng":140}`))
+	request := adminTestRequest("POST", "/api/location", strings.NewReader(`{"id":-1,"lat":36,"lng":140}`))
 	request.Header.Set("Content-Type", "application/json")
 	result := httptest.NewRecorder()
 	assignLocationHandler(result, request)
@@ -76,7 +76,7 @@ func TestManualLocationPersistsWithoutChangingPhoto(t *testing.T) {
 		t.Fatal("manual locations must not become suggestion sources")
 	}
 	content := httptest.NewRecorder()
-	mediaFileHandler(content, httptest.NewRequest("GET", "/media?id=-1", nil))
+	mediaFileHandler(content, adminTestRequest("GET", "/media?id=-1", nil))
 	if content.Code != 200 || content.Body.String() != "original photo bytes" {
 		t.Fatal("unlocated media cannot be viewed")
 	}
@@ -100,7 +100,7 @@ func TestLocationValidationAndSaveFailure(t *testing.T) {
 		{`{"id":-1,"lat":35,"lng":139}`, "https://other.example", 403},
 		{`{"id":-1,"lat":35,"lng":139}`, "", 500},
 	} {
-		r := httptest.NewRequest("POST", "/api/location", strings.NewReader(tc.body))
+		r := adminTestRequest("POST", "/api/location", strings.NewReader(tc.body))
 		r.Header.Set("Content-Type", "application/json")
 		r.Header.Set("Origin", tc.origin)
 		w := httptest.NewRecorder()
@@ -126,7 +126,7 @@ func TestSuggestionWindowAndPagination(t *testing.T) {
 	unlocated = make([]Media, 35)
 	unlocated[0].Source = "manual"
 	w := httptest.NewRecorder()
-	unlocatedHandler(w, httptest.NewRequest("GET", "/api/unlocated?offset=30", nil))
+	unlocatedHandler(w, adminTestRequest("GET", "/api/unlocated?offset=30", nil))
 	var data struct {
 		Items         []Media
 		Total, Offset int
@@ -148,7 +148,7 @@ func TestBatchLocationSaveIsAtomic(t *testing.T) {
 	assignments = locationAssignments{Root: root, Locations: make(map[string]savedLocation)}
 	assignmentsPath = filepath.Join(root, "locations.json")
 	post := func(body string) *httptest.ResponseRecorder {
-		r := httptest.NewRequest("POST", "/api/location", strings.NewReader(body))
+		r := adminTestRequest("POST", "/api/location", strings.NewReader(body))
 		r.Header.Set("Content-Type", "application/json")
 		w := httptest.NewRecorder()
 		assignLocationHandler(w, r)
@@ -206,7 +206,7 @@ func TestUnlocatedDateFilters(t *testing.T) {
 		{"year=2023", 1, -1}, {"year=2024&month=1", 1, -2}, {"month=12", 1, -1}, {"year=unknown", 1, -3}, {"year=2024&month=2", 0, 0}, {"", 3, -1},
 	} {
 		w := httptest.NewRecorder()
-		unlocatedHandler(w, httptest.NewRequest("GET", "/api/unlocated?"+tc.query, nil))
+		unlocatedHandler(w, adminTestRequest("GET", "/api/unlocated?"+tc.query, nil))
 		var result struct {
 			Items []Media
 			Total int
@@ -224,7 +224,7 @@ func TestUnlocatedDateFilters(t *testing.T) {
 	}
 	for _, q := range []string{"year=abc", "month=13", "year=unknown&month=1"} {
 		w := httptest.NewRecorder()
-		unlocatedHandler(w, httptest.NewRequest("GET", "/api/unlocated?"+q, nil))
+		unlocatedHandler(w, adminTestRequest("GET", "/api/unlocated?"+q, nil))
 		if w.Code != 400 {
 			t.Fatal(q, w.Code)
 		}
@@ -233,7 +233,7 @@ func TestUnlocatedDateFilters(t *testing.T) {
 		unlocated = append(unlocated, Media{ID: -5 - i, TakenAt: boundary})
 	}
 	w := httptest.NewRecorder()
-	unlocatedHandler(w, httptest.NewRequest("GET", "/api/unlocated?year=2024&month=1&offset=30", nil))
+	unlocatedHandler(w, adminTestRequest("GET", "/api/unlocated?year=2024&month=1&offset=30", nil))
 	var result struct {
 		Items         []Media
 		Total, Offset int

@@ -84,16 +84,22 @@ type coordinates struct {
 }
 
 func main() {
-	dir := flag.String("photos", "./photos", "Google Photos/Takeout を展開したフォルダ")
+	dir := flag.String("photos", "/photos", "Google Photos/Takeout を展開したフォルダ")
 	addr := flag.String("addr", "127.0.0.1:8080", "待受アドレス")
 	rebuildCache := flag.Bool("rebuild-cache", false, "保存済みキャッシュを使わず位置情報を再解析")
 	locationsPath := flag.String("locations", "photo-locations.json", "手動で紐づけた位置情報の保存先")
+	adminUsers := flag.String("admin-users", "photos-admin", "管理者のBasic認証ユーザー名（カンマ区切り）")
+	trustedProxies := flag.String("trusted-proxies", "127.0.0.1,::1", "認証済みユーザー名を受け入れるプロキシの接続元IP（カンマ区切り）")
 	flag.IntVar(&mediaLimit, "limit", 100, "地図に表示する最大件数（1以上）")
 	flag.Parse()
 	if mediaLimit < 1 {
 		log.Fatal("-limit は1以上の整数で指定してください")
 	}
 
+	policy, err := newAccessPolicy(*adminUsers, *trustedProxies)
+	if err != nil {
+		log.Fatal(err)
+	}
 	abs, err := filepath.Abs(*dir)
 	if err != nil {
 		log.Fatal(err)
@@ -118,21 +124,13 @@ func main() {
 
 	printFolderCounts(abs)
 
-	http.HandleFunc("/", indexHandler)
-	http.HandleFunc("/api/photos", mediaHandler) // 旧URL互換
-	http.HandleFunc("/api/media", mediaHandler)
-	http.HandleFunc("/photo", mediaFileHandler) // 旧URL互換
-	http.HandleFunc("/media", mediaFileHandler)
-	http.HandleFunc("/api/unlocated", unlocatedHandler)
-	http.HandleFunc("/api/location", assignLocationHandler)
-
 	photoCount, videoCount, jsonCount := totalCounts()
 	log.Printf("位置情報付き写真: %d枚", photoCount)
 	log.Printf("位置情報付き動画: %d本", videoCount)
 	log.Printf("Takeout JSONから位置情報を取得: %d件", jsonCount)
 	log.Printf("位置情報付きメディア合計: %d件", len(media))
-	log.Printf("ブラウザで http://%s を開いてください", *addr)
-	log.Fatal(http.ListenAndServe(*addr, nil))
+	log.Printf("待受: http://%s（ブラウザではBasic認証を設定した公開URLを開いてください）", *addr)
+	log.Fatal(http.ListenAndServe(*addr, appHandler(policy)))
 }
 
 func scanMedia(root string, cache *metadataCache) error {
@@ -413,7 +411,10 @@ func indexHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	if err := template.Must(template.New("index").Parse(indexHTML)).Execute(w, struct{ Limit int }{mediaLimit}); err != nil {
+	if err := template.Must(template.New("index").Parse(indexHTML)).Execute(w, struct {
+		Limit int
+		Admin bool
+	}{mediaLimit, isAdmin(r)}); err != nil {
 		log.Println(err)
 	}
 }
@@ -500,6 +501,9 @@ func spreadMedia(items []Media, minLat, maxLat, minLng, maxLng float64, limit in
 
 func mediaFileHandler(w http.ResponseWriter, r *http.Request) {
 	id, err := strconv.Atoi(r.URL.Query().Get("id"))
+	if err == nil && id < 0 && !requireAdmin(w, r) {
+		return
+	}
 
 	mu.RLock()
 	defer mu.RUnlock()
@@ -585,7 +589,7 @@ const indexHTML = `<!doctype html>
       <button type="submit">この位置へ移動</button>
       <p id="coordinate-result" role="status"></p>
     </form>
-    <label>表示 <select id="view-mode"><option value="map">地図の写真・動画</option><option value="unlocated">位置情報のない写真</option></select></label>
+    <label>表示 <select id="view-mode"><option value="map">地図の写真・動画</option>{{if .Admin}}<option value="unlocated">位置情報のない写真</option>{{end}}</select></label>
     <div id="selection-tools" hidden><button id="select-page" type="button">このページをすべて選択</button> <button id="clear-selection" type="button">すべて解除</button> <span id="selection-count">0枚選択</span></div>
     <div id="date-filters" hidden>
       <label>撮影年 <select id="filter-year"><option value="">すべての年</option><option value="unknown">撮影日時なし</option></select></label>
@@ -809,7 +813,7 @@ async function refresh() {
 
   let items;
   try {
-    const response = await fetch('/api/media?' + q);
+    const response = await fetch('./api/media?' + q);
     if (!response.ok) throw new Error('HTTP ' + response.status);
     items = await response.json();
     if (!Array.isArray(items)) throw new Error('Invalid media response');
@@ -834,7 +838,7 @@ async function refresh() {
     '写真 ' + photos + '枚 / 動画 ' + videos + '本（地図全体から分散して最大{{.Limit}}件表示）';
 
   for (const p of items) {
-    const src = '/media?id=' + p.id;
+    const src = './media?id=' + p.id;
     const isVideo = p.type === 'video';
     const isHEIC = p.format === 'heic' || p.format === 'heif';
 
@@ -992,7 +996,7 @@ async function loadUnlocated() {
   status.setAttribute('aria-busy', 'true');
   try {
     const query = new URLSearchParams({ offset: unlocatedOffset, year: document.getElementById('filter-year').value, month: document.getElementById('filter-month').value });
-    const response = await fetch('/api/unlocated?' + query);
+    const response = await fetch('./api/unlocated?' + query);
     if (!response.ok) throw new Error('一覧を読み込めません');
     const data = await response.json();
     if (current !== requestNo) return;
@@ -1013,7 +1017,7 @@ async function loadUnlocated() {
     box.replaceChildren();
     for (const p of data.items) {
       const fig = document.createElement('figure'); fig.className = 'card';
-      const src = '/media?id=' + p.id;
+      const src = './media?id=' + p.id;
       if (p.format === 'heic' || p.format === 'heif') fig.append(heicThumbnail(p, src, () => selectUnlocatedPhoto(p)));
       else {
         const img = document.createElement('img'); img.loading = 'lazy'; img.src = src; img.alt = p.name;
@@ -1094,7 +1098,7 @@ document.getElementById('save-location').onclick = async () => {
   document.getElementById('view-mode').disabled = true;
   if (pickedMarker) pickedMarker.dragging.disable();
   try {
-    const response = await fetch('/api/location', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ids, ...pickedLocation }) });
+    const response = await fetch('./api/location', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ids, ...pickedLocation }) });
     if (!response.ok) throw new Error(await response.text());
     clearLocationSelection();
     document.getElementById('location-result').textContent = ids.length + '枚の位置情報を保存しました。地図の写真・動画に切り替えると反映されます。';

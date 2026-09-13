@@ -111,6 +111,9 @@ func suggestLocation(p Media) *locationSuggestion {
 }
 
 func unlocatedHandler(w http.ResponseWriter, r *http.Request) {
+	if !requireAdmin(w, r) {
+		return
+	}
 	if r.Method != http.MethodGet {
 		w.WriteHeader(http.StatusMethodNotAllowed)
 		return
@@ -198,6 +201,9 @@ func unlocatedHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func assignLocationHandler(w http.ResponseWriter, r *http.Request) {
+	if !requireAdmin(w, r) {
+		return
+	}
 	if r.Method != http.MethodPost {
 		w.WriteHeader(http.StatusMethodNotAllowed)
 		return

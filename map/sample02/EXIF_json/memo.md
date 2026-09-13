@@ -1,9 +1,20 @@
 cd /d D:\GitHub\go-samples\map\sample02\EXIF_json
-
-
-
-
 go run . -photos "D:\GooglePhotos\Takeout\Google フォト"
+
+docker exec openresty openresty -T 2>&1
+sudo htpasswd -B /etc/nginx/photos.htpasswd photos
+sudo htpasswd -B /etc/nginx/photos.htpasswd photos-admin
+docker cp /etc/nginx/photos.htpasswd openresty:/etc/nginx/photos.htpasswd
+
+
+
+-addr 0.0.0.0:18082
+-limit 500
+-rebuild-cache
+-trusted-proxies 192.168.0.8
+-admin-users photos-admin
+
+go run . -photos "D:\GooglePhotos\Takeout\Google フォト" -limit 50 -addr 0.0.0.0:18082 -trusted-proxies 192.168.0.08
 
 最大表示件数はデフォルト100件。-limit で1以上の整数を指定できます。
 地図全体から分散して指定件数まで表示します。
@@ -49,3 +60,62 @@ Takeout JSONの photoTakenTime.timestamp がある場合、前後1時間以内�
 初回のみ撮影日時取得のため既存の解析キャッシュを再構築します。
 
 確認: go test . / node --test heic_preview.test.cjs（oldフォルダは対象外）
+
+## 一般アカウント・管理者アカウント
+
+OpenRestyのBasic認証と連携します。既存の photos は一般ユーザー、photos-admin は管理者です。
+一般ユーザーは位置情報付きの写真・動画を閲覧できます。
+位置情報なしの表示切替・一覧・画像の直接参照・位置情報の保存は管理者だけが利用できます。
+管理者が位置情報を保存した写真は、従来どおり地図に追加され、一般ユーザーにも公開されます。
+位置情報未登録の画像は旧URL /photo?id=-1 などからも参照できません。
+
+導入時は、OpenResty設定とGoプログラムを一緒に更新してください。
+Goプログラムは認証済みユーザー名を受け取れないアクセスを403で拒否します。
+従来の http://127.0.0.1:8080/ へのブラウザ直接アクセスも対象です。
+
+1. サーバー側の既存パスワードファイルに管理者を追加します。パスワードは対話入力します。
+   既存の photos を残すため -c は付けません。
+
+   ```sh
+   sudo htpasswd -B /etc/nginx/photos.htpasswd photos-admin
+   docker cp /etc/nginx/photos.htpasswd openresty:/etc/nginx/photos.htpasswd
+   ```
+
+   ファイルをコンテナへマウントしている場合は、マウント元を更新してください。
+   管理者のパスワードは photos と別にします。
+
+2. openresty-photos.conf.example を参考に、既存のHTTPS server内の /photos/ 設定を更新します。
+   proxy_pass の接続先は現在の写真アプリの接続先を使い、末尾の / を残してください。
+   X-Photo-User は必ず $remote_user で上書きし、Basic認証を全API・画像にも適用します。
+   Hostも維持します。proxy_cache off はアカウント間のキャッシュ共有を防ぎます。
+
+3. Goプログラムを再起動します。同一ホストのループバック接続の場合の例です。
+
+   ```powershell
+   go run . -photos "D:\GooglePhotos\Takeout\Google フォト" -admin-users photos-admin
+   ```
+
+   -admin-users はカンマ区切りで複数名を指定できます。名前は大文字・小文字を区別します。
+   指定に含まれない認証済みアカウントは一般ユーザーになります。
+   管理者名の指定はアカウント作成ではありません。Basic認証側にも同じ名前が必要です。
+
+   Dockerや別ホストのOpenRestyから接続する場合は、Goから見える実際の接続元IPを
+   -trusted-proxies "192.0.2.10" のように指定してください（このIPは説明用です）。
+   デフォルトは 127.0.0.1,::1 です。IPの列挙のみ対応し、X-Forwarded-Forは信用しません。
+   -addr も既存の構成に合わせ、Goのポートへは認証プロキシだけが接続できる構成にします。
+   信頼するIP上のプロセスはユーザー名を指定できるため、共有の転送元IPを無条件に信頼しないでください。
+
+4. OpenRestyの設定を検証して再読み込みします。
+
+   ```sh
+   docker exec openresty openresty -t
+   docker exec openresty openresty -s reload
+   ```
+
+5. https://steememory.com/photos/ を別々のブラウザプロファイルで開き、photos と photos-admin を確認します。
+   Basic認証はブラウザが資格情報を保持するため、アカウントの切替には別プロファイルが確実です。
+   photos では「位置情報のない写真」がなく、/photos/api/unlocated は403になります。
+   photos-admin では一覧・写真の表示・位置保存を利用できます。
+
+設定の参照元: [Nginx proxy module](https://nginx.org/en/docs/http/ngx_http_proxy_module.html)、
+[Nginx Basic認証](https://nginx.org/en/docs/http/ngx_http_auth_basic_module.html)。

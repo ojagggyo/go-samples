@@ -60,7 +60,7 @@ test('multiple selections retain adjusted coordinates across pages and save toge
   assert.equal(get('selection-count').textContent, '2枚選択');
   await get('save-location').onclick();
   assert.equal(requests.length, 1);
-  assert.equal(requests[0].url, '/api/location');
+  assert.equal(requests[0].url, './api/location');
   assert.deepEqual(JSON.parse(requests[0].options.body), {ids:[-1,-2],lat:38.9088661,lng:140.8097197});
   assert.match(get('location-result').textContent, /保存しました/);
   assert.equal(get('selection-count').textContent, '0枚選択');
